@@ -20,6 +20,7 @@
         <converters:ByteArrayToImageConverter x:Key="ByteArrayToImageConverter"/>
         <converters:FlagToColorConverter x:Key="FlagToColorConverter"/>
         <converters:InvertBoolToVisibilityConverter x:Key="InvertBoolToVisibilityConverter"/>
+        <converters:TimeLimitedConverter x:Key="TimeLimitedConverter"/>
         <converters:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
     </Window.Resources>
 
@@ -127,11 +128,13 @@
                     <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="*"/>
                     <DataGridTextColumn Header="分类" Binding="{Binding Category, Converter={StaticResource CategoryConverter}}" Width="50"/>
                     <DataGridTextColumn Header="子分类" Binding="{Binding SubCategory, Converter={StaticResource SubCategoryConverter}}" Width="60"
-                                        Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource InvertBoolToVisibilityConverter}}"/>
+                                        Visibility="{Binding Data.ShowSubCategoryAndLevel, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <DataGridTextColumn Header="等级" Binding="{Binding ReqLevel}" Width="45"
-                                        Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource InvertBoolToVisibilityConverter}}"/>
+                                        Visibility="{Binding Data.ShowSubCategoryAndLevel, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <DataGridTextColumn Header="SN" Binding="{Binding Sn}" Width="80"
                                         Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    <DataGridTextColumn Header="限时" Binding="{Binding TimeLimited, Converter={StaticResource TimeLimitedConverter}}" Width="50"
+                                        Visibility="{Binding Data.ShowTimeLimitedColumn, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </DataGrid.Columns>
             </DataGrid>
 

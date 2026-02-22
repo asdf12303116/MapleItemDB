@@ -39,6 +39,9 @@ public class DatabaseBootstrapper
 
         // 安全迁移: dim_items 新增 sn 列
         await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN sn INTEGER;");
+
+        // 安全迁移: dim_items 新增 time_limited 列
+        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN time_limited INTEGER DEFAULT 0;");
     }
 
     private static async Task SafeAddColumnAsync(Microsoft.Data.Sqlite.SqliteConnection conn, string sql)

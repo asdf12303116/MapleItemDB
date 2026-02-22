@@ -145,8 +145,8 @@ public partial class MainViewModel : ObservableObject
         new("机器人", "Android"),
         new("骑宠", "TamingMob"),
         new("宠物装备", "PetEquip"),
-        new("符号(ARC)", "ArcaneForce"),
-        new("符号(AUT)", "AuthenticForce"),
+        new("神秘徽章", "ArcaneForce"),
+        new("原初徽章", "AuthenticForce"),
     ];
 
     [ObservableProperty]
@@ -157,6 +157,18 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isCashSelected;
+
+    /// <summary>
+    /// 是否显示限时道具列 (消耗品/其他/设置时显示)
+    /// </summary>
+    [ObservableProperty]
+    private bool _showTimeLimitedColumn;
+
+    /// <summary>
+    /// 是否显示子分类和等级列 (现金/消耗品/其他/设置时隐藏)
+    /// </summary>
+    [ObservableProperty]
+    private bool _showSubCategoryAndLevel = true;
 
     /// <summary>
     /// SN 筛选选项列表
@@ -243,6 +255,8 @@ public partial class MainViewModel : ObservableObject
     {
         IsEquipSelected = value.Value == ItemCategory.Equip;
         IsCashSelected = value.Value == ItemCategory.Cash;
+        ShowTimeLimitedColumn = value.Value is ItemCategory.Consume or ItemCategory.Etc or ItemCategory.Setup;
+        ShowSubCategoryAndLevel = !IsCashSelected && !ShowTimeLimitedColumn;
         SelectedSubCategoryOption = EquipSubCategoryOptions[0];
         SelectedSnFilterOption = SnFilterOptions[0];
     }
@@ -795,6 +809,14 @@ public static class StatsDisplayHelper
         {
             if (dynamic.TryGetValue(key, out var val) && val != 0)
                 flagLines.Add(new StatsLine(text, IsFlag: true));
+        }
+
+        // 武器分类 (紧接特殊标志之后)
+        if (item.SubCategory is "Weapon" or "SecondWeapon")
+        {
+            var weaponType = WeaponTypeHelper.GetWeaponTypeName(item.ItemId);
+            if (weaponType != null)
+                flagLines.Add(new StatsLine($"分类 : {weaponType}"));
         }
 
         // 消耗品属性

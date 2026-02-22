@@ -171,8 +171,10 @@ public class EquipExtractor
         [115] = "Shoulder",
         [116] = "Pocket",
         [117] = "Badge",
-        [118] = "Android",
-        [119] = "Heart",
+        [118] = "Badge",
+        [119] = "Emblem",
+        // 高段位装备
+        [167] = "Heart",
     };
 
     private static string ResolveSubCategory(int itemId, string folderName)

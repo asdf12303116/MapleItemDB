@@ -239,36 +239,46 @@ public static class WeaponTypeHelper
 {
     private static readonly Dictionary<int, string> WeaponTypeNames = new()
     {
-        [130] = "单手剑",
-        [131] = "单手斧",
-        [132] = "单手钝器",
-        [133] = "短刀",
-        [134] = "双刀",
-        [136] = "手杖",
-        [137] = "短杖",
-        [138] = "长杖",
-        [140] = "双手剑",
-        [141] = "双手斧",
-        [142] = "双手钝器",
-        [143] = "枪",
-        [144] = "矛",
-        [145] = "弓",
-        [146] = "弩",
-        [147] = "拳套",
-        [148] = "指节",
-        [149] = "短枪",
-        [150] = "铲子",
-        [151] = "镐子",
-        [152] = "双弩",
-        [153] = "手炮",
-        [154] = "太刀",
-        [155] = "扇子",
-        [156] = "大剑",
-        [157] = "长剑",
-        [158] = "臂铠",
-        [159] = "远古弓",
-        [160] = "调谐器",
-        [161] = "吐息",
+        // 单手武器
+        [122] = "灵魂手铳(单手)",
+        [123] = "亡命剑(单手)",
+        [124] = "能量剑(单手)",
+        [125] = "魔法棒(单手)",
+        [126] = "ESP限制器(单手)",
+        [127] = "锁链(单手)",
+        [128] = "魔力手套(单手)",
+        [129] = "扇子(单手)",
+        [130] = "单手剑(单手)",
+        [131] = "单手斧(单手)",
+        [132] = "单手钝器(单手)",
+        [133] = "短剑(单手)",
+        [134] = "小刀(单手)",
+        [136] = "手杖(单手)",
+        [137] = "短杖(单手)",
+        [138] = "长杖(单手)",
+        [1212] = "双头杖(单手)",
+        [1213] = "调谐器(单手)",
+        [1214] = "龙息臂箭(单手)",
+        // 双手武器
+        [121] = "拳封(双手)",
+        [140] = "双手剑(双手)",
+        [141] = "双手斧(双手)",
+        [142] = "双手钝器(双手)",
+        [143] = "枪(双手)",
+        [144] = "矛(双手)",
+        [145] = "弓(双手)",
+        [146] = "弩(双手)",
+        [147] = "拳套(双手)",
+        [148] = "拳甲(双手)",
+        [149] = "短枪(双手)",
+        [152] = "双弩枪(双手)",
+        [153] = "手炮(双手)",
+        [154] = "武士刀(双手)",
+        [155] = "折扇(双手)",
+        [156] = "锋利之影(双手)",
+        [157] = "阔影剑(双手)",
+        [158] = "拳炮(双手)",
+        [159] = "远古弓(双手)",
     };
 
     /// <summary>
@@ -276,8 +286,16 @@ public static class WeaponTypeHelper
     /// </summary>
     public static string? GetWeaponTypeName(int itemId)
     {
-        var prefix = itemId / 10000;
-        return WeaponTypeNames.GetValueOrDefault(prefix);
+        var idStr = itemId.ToString();
+        if (idStr.Length >= 4
+            && int.TryParse(idStr.AsSpan(0, 4), out var p4)
+            && WeaponTypeNames.TryGetValue(p4, out var name4))
+            return name4;
+        if (idStr.Length >= 3
+            && int.TryParse(idStr.AsSpan(0, 3), out var p3)
+            && WeaponTypeNames.TryGetValue(p3, out var name3))
+            return name3;
+        return null;
     }
 }
 
@@ -416,6 +434,22 @@ public class InvertBoolToVisibilityConverter : IValueConverter
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         return value is true ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// bool → "限时" / "永久"
+/// </summary>
+public class TimeLimitedConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is true ? "限时" : "永久";
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
