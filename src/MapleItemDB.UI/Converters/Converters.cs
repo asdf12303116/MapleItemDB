@@ -1,18 +1,27 @@
 using System.Globalization;
+using System.IO;
 using System.Windows;
 using System.Windows.Data;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using MapleItemDB.Core.Models;
 
 namespace MapleItemDB.UI.Converters;
 
 /// <summary>
-/// null/空字符串 → Collapsed, 否则 Visible
+/// null/空字符串/空byte[] → Collapsed, 否则 Visible
 /// </summary>
 public class NullToCollapsedConverter : IValueConverter
 {
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
-        return string.IsNullOrEmpty(value?.ToString()) ? Visibility.Collapsed : Visibility.Visible;
+        return value switch
+        {
+            null => Visibility.Collapsed,
+            byte[] bytes => bytes.Length > 0 ? Visibility.Visible : Visibility.Collapsed,
+            string s => string.IsNullOrEmpty(s) ? Visibility.Collapsed : Visibility.Visible,
+            _ => Visibility.Visible,
+        };
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -50,6 +59,7 @@ public class ItemCategoryConverter : IValueConverter
         [ItemCategory.Setup] = "设置",
         [ItemCategory.Cash] = "点装",
         [ItemCategory.Pet] = "宠物",
+        [ItemCategory.Skill] = "技能",
     };
 
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
@@ -138,6 +148,73 @@ public class SubCategoryConverter : IValueConverter
         if (value is string sub && SubCategoryNames.TryGetValue(sub, out var name))
             return name;
         return value?.ToString() ?? string.Empty;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// byte[] (PNG) → BitmapImage
+/// </summary>
+public class ByteArrayToImageConverter : IValueConverter
+{
+    public object? Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        if (value is not byte[] bytes || bytes.Length == 0)
+            return null;
+
+        var bmp = new BitmapImage();
+        using var ms = new MemoryStream(bytes);
+        bmp.BeginInit();
+        bmp.CacheOption = BitmapCacheOption.OnLoad;
+        bmp.StreamSource = ms;
+        bmp.EndInit();
+        bmp.Freeze();
+        return bmp;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// bool 取反转 Visibility: true → Collapsed, false → Visible
+/// </summary>
+public class InvertBoolToVisibilityConverter : IValueConverter
+{
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is true ? Visibility.Collapsed : Visibility.Visible;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// IsFlag (bool) → 橙色 #FF9900 / 黑色
+/// </summary>
+public class FlagToColorConverter : IValueConverter
+{
+    private static readonly SolidColorBrush OrangeBrush = new(Color.FromRgb(0xFF, 0x99, 0x00));
+    private static readonly SolidColorBrush BlackBrush = new(Colors.Black);
+
+    static FlagToColorConverter()
+    {
+        OrangeBrush.Freeze();
+        BlackBrush.Freeze();
+    }
+
+    public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
+    {
+        return value is true ? OrangeBrush : BlackBrush;
     }
 
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)

@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json;
 using Dapper;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
@@ -102,14 +103,14 @@ public class ItemRepository : IItemRepository
                 inc_str, inc_dex, inc_int, inc_luk,
                 inc_pad, inc_mad, inc_pdd, inc_mdd, inc_mhp, inc_mmp,
                 dynamic_stats, consume_spec,
-                is_cash, price, icon_path, preview_path, setitem_id, extracted_at
+                is_cash, price, icon_data, preview_data, setitem_id, extracted_at
             ) VALUES (
                 @item_id, @name, @description, @category, @sub_category,
                 @req_level, @req_str, @req_dex, @req_int, @req_luk,
                 @inc_str, @inc_dex, @inc_int, @inc_luk,
                 @inc_pad, @inc_mad, @inc_pdd, @inc_mdd, @inc_mhp, @inc_mmp,
                 @dynamic_stats, @consume_spec,
-                @is_cash, @price, @icon_path, @preview_path, @setitem_id, @extracted_at
+                @is_cash, @price, @icon_data, @preview_data, @setitem_id, @extracted_at
             )
             ON CONFLICT(item_id) DO UPDATE SET
                 name=excluded.name, description=excluded.description,
@@ -123,7 +124,7 @@ public class ItemRepository : IItemRepository
                 inc_mhp=excluded.inc_mhp, inc_mmp=excluded.inc_mmp,
                 dynamic_stats=excluded.dynamic_stats, consume_spec=excluded.consume_spec,
                 is_cash=excluded.is_cash, price=excluded.price,
-                icon_path=excluded.icon_path, preview_path=excluded.preview_path,
+                icon_data=excluded.icon_data, preview_data=excluded.preview_data,
                 setitem_id=excluded.setitem_id,
                 extracted_at=excluded.extracted_at
             """;
@@ -148,6 +149,86 @@ public class ItemRepository : IItemRepository
         var result = rows.Select(r => (r.item_id, r.name)).ToList();
         _logger.LogInformation("加载索引: {Count} 条", result.Count);
         return result;
+    }
+
+    public async Task BulkUpsertSetItemsAsync(IEnumerable<SetItemInfo> setItems)
+    {
+        const string sql = """
+            INSERT INTO dim_setitems (setitem_id, name, data_json)
+            VALUES (@setitem_id, @name, @data_json)
+            ON CONFLICT(setitem_id) DO UPDATE SET
+                name=excluded.name, data_json=excluded.data_json
+            """;
+
+        using var conn = _connectionFactory.Create();
+        await conn.OpenAsync();
+        using var tx = await conn.BeginTransactionAsync();
+
+        var rows = setItems.Select(s => new
+        {
+            setitem_id = s.SetItemId,
+            name = s.SetItemName,
+            data_json = JsonSerializer.Serialize(s),
+        });
+        await conn.ExecuteAsync(sql, rows, transaction: tx);
+
+        await tx.CommitAsync();
+        _logger.LogInformation("套装信息写入完成: {Count} 条", setItems.Count());
+    }
+
+    public async Task<Dictionary<int, SetItemInfo>> GetAllSetItemsAsync()
+    {
+        const string sql = "SELECT setitem_id, data_json FROM dim_setitems";
+        using var conn = _connectionFactory.Create();
+        var rows = await conn.QueryAsync<(int setitem_id, string data_json)>(sql);
+
+        var result = new Dictionary<int, SetItemInfo>();
+        foreach (var (id, json) in rows)
+        {
+            var info = JsonSerializer.Deserialize<SetItemInfo>(json);
+            if (info != null)
+                result[id] = info;
+        }
+        _logger.LogInformation("套装信息加载完成: {Count} 条", result.Count);
+        return result;
+    }
+
+    public async Task BulkUpsertSkillsAsync(IEnumerable<SkillEntity> skills)
+    {
+        const string sql = """
+            INSERT INTO dim_skills (
+                skill_id, name, description, job_id, max_level,
+                icon_data, is_hidden, level_effects, extracted_at
+            ) VALUES (
+                @skill_id, @name, @description, @job_id, @max_level,
+                @icon_data, @is_hidden, @level_effects, @extracted_at
+            )
+            ON CONFLICT(skill_id) DO UPDATE SET
+                name=excluded.name, description=excluded.description,
+                job_id=excluded.job_id, max_level=excluded.max_level,
+                icon_data=excluded.icon_data, is_hidden=excluded.is_hidden,
+                level_effects=excluded.level_effects,
+                extracted_at=excluded.extracted_at
+            """;
+
+        _logger.LogInformation("开始批量写入技能 {Count} 条...", skills.Count());
+        using var conn = _connectionFactory.Create();
+        await conn.OpenAsync();
+        using var tx = await conn.BeginTransactionAsync();
+
+        var rows = skills.Select(SkillRow.FromEntity).ToList();
+        await conn.ExecuteAsync(sql, rows, transaction: tx);
+
+        await tx.CommitAsync();
+        _logger.LogInformation("技能写入完成");
+    }
+
+    public async Task<IReadOnlyList<SkillEntity>> SearchSkillsByNameAsync(string keyword, int limit = 50)
+    {
+        const string sql = "SELECT * FROM dim_skills WHERE name LIKE @Keyword LIMIT @Limit";
+        using var conn = _connectionFactory.Create();
+        var rows = await conn.QueryAsync<SkillRow>(sql, new { Keyword = $"%{keyword}%", Limit = limit });
+        return rows.Select(r => r.ToEntity()).ToList();
     }
 
     /// <summary>
@@ -179,8 +260,8 @@ public class ItemRepository : IItemRepository
         public string? consume_spec { get; set; }
         public int is_cash { get; set; }
         public int? price { get; set; }
-        public string? icon_path { get; set; }
-        public string? preview_path { get; set; }
+        public byte[]? icon_data { get; set; }
+        public byte[]? preview_data { get; set; }
         public int? setitem_id { get; set; }
         public string extracted_at { get; set; } = "";
 
@@ -210,8 +291,8 @@ public class ItemRepository : IItemRepository
             ConsumeSpec = consume_spec,
             IsCash = is_cash != 0,
             Price = price,
-            IconPath = icon_path,
-            PreviewPath = preview_path,
+            IconData = icon_data,
+            PreviewData = preview_data,
             SetItemId = setitem_id,
             ExtractedAt = DateTime.TryParse(extracted_at, out var dt) ? dt : DateTime.MinValue,
         };
@@ -242,9 +323,51 @@ public class ItemRepository : IItemRepository
             consume_spec = e.ConsumeSpec,
             is_cash = e.IsCash ? 1 : 0,
             price = e.Price,
-            icon_path = e.IconPath,
-            preview_path = e.PreviewPath,
+            icon_data = e.IconData,
+            preview_data = e.PreviewData,
             setitem_id = e.SetItemId,
+            extracted_at = e.ExtractedAt.ToString("O"),
+        };
+    }
+
+    /// <summary>
+    /// 技能行模型 — 属性名与数据库列名对齐
+    /// </summary>
+    private class SkillRow
+    {
+        public int skill_id { get; set; }
+        public string name { get; set; } = "";
+        public string? description { get; set; }
+        public int job_id { get; set; }
+        public int max_level { get; set; }
+        public byte[]? icon_data { get; set; }
+        public int is_hidden { get; set; }
+        public string? level_effects { get; set; }
+        public string extracted_at { get; set; } = "";
+
+        public SkillEntity ToEntity() => new()
+        {
+            SkillId = skill_id,
+            Name = name,
+            Description = description,
+            JobId = job_id,
+            MaxLevel = max_level,
+            IconData = icon_data,
+            IsHidden = is_hidden != 0,
+            LevelEffectsJson = level_effects,
+            ExtractedAt = DateTime.TryParse(extracted_at, out var dt) ? dt : DateTime.MinValue,
+        };
+
+        public static SkillRow FromEntity(SkillEntity e) => new()
+        {
+            skill_id = e.SkillId,
+            name = e.Name,
+            description = e.Description,
+            job_id = e.JobId,
+            max_level = e.MaxLevel,
+            icon_data = e.IconData,
+            is_hidden = e.IsHidden ? 1 : 0,
+            level_effects = e.LevelEffectsJson,
             extracted_at = e.ExtractedAt.ToString("O"),
         };
     }

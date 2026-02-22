@@ -27,23 +27,20 @@ public class DatabaseBootstrapper
         await cmd.ExecuteNonQueryAsync();
 
         // 安全迁移: 添加 set_item_id 列（已存在则忽略）
-        try
-        {
-            using var migrateCmd = conn.CreateCommand();
-            migrateCmd.CommandText = "ALTER TABLE dim_items ADD COLUMN setitem_id INTEGER;";
-            await migrateCmd.ExecuteNonQueryAsync();
-        }
-        catch
-        {
-            // 列已存在，忽略错误
-        }
+        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN setitem_id INTEGER;");
 
-        // 安全迁移: 添加 preview_path 列（已存在则忽略）
+        // 安全迁移: icon_path/preview_path → icon_data/preview_data (BLOB)
+        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN icon_data BLOB;");
+        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN preview_data BLOB;");
+    }
+
+    private static async Task SafeAddColumnAsync(Microsoft.Data.Sqlite.SqliteConnection conn, string sql)
+    {
         try
         {
-            using var migrateCmd2 = conn.CreateCommand();
-            migrateCmd2.CommandText = "ALTER TABLE dim_items ADD COLUMN preview_path TEXT;";
-            await migrateCmd2.ExecuteNonQueryAsync();
+            using var cmd = conn.CreateCommand();
+            cmd.CommandText = sql;
+            await cmd.ExecuteNonQueryAsync();
         }
         catch
         {
@@ -85,12 +82,35 @@ public class DatabaseBootstrapper
             -- 元数据
             is_cash       INTEGER DEFAULT 0,
             price         INTEGER,
-            icon_path     TEXT,
+            icon_data     BLOB,
+            preview_data  BLOB,
             extracted_at  TEXT NOT NULL
         );
 
         CREATE INDEX IF NOT EXISTS idx_items_name ON dim_items(name);
         CREATE INDEX IF NOT EXISTS idx_items_category ON dim_items(category, sub_category);
         CREATE INDEX IF NOT EXISTS idx_items_cash ON dim_items(is_cash) WHERE is_cash = 1;
+
+        -- 套装信息表 (整条套装序列化为 JSON)
+        CREATE TABLE IF NOT EXISTS dim_setitems (
+            setitem_id    INTEGER PRIMARY KEY,
+            name          TEXT NOT NULL,
+            data_json     TEXT NOT NULL
+        );
+
+        -- 技能信息表
+        CREATE TABLE IF NOT EXISTS dim_skills (
+            skill_id       INTEGER PRIMARY KEY,
+            name           TEXT NOT NULL,
+            description    TEXT,
+            job_id         INTEGER NOT NULL,
+            max_level      INTEGER DEFAULT 0,
+            icon_data      BLOB,
+            is_hidden      INTEGER DEFAULT 0,
+            level_effects  TEXT,
+            extracted_at   TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_skills_name ON dim_skills(name);
+        CREATE INDEX IF NOT EXISTS idx_skills_job ON dim_skills(job_id);
         """;
 }

@@ -52,11 +52,11 @@ public class ItemEntity
     /// <summary>NPC 售价</summary>
     public int? Price { get; set; }
 
-    /// <summary>本地图标缓存路径</summary>
-    public string? IconPath { get; set; }
+    /// <summary>图标 PNG 二进制数据</summary>
+    public byte[]? IconData { get; set; }
 
-    /// <summary>外观装备预览图路径</summary>
-    public string? PreviewPath { get; set; }
+    /// <summary>外观装备预览图 PNG 二进制数据</summary>
+    public byte[]? PreviewData { get; set; }
 
     /// <summary>套装 ID</summary>
     public int? SetItemId { get; set; }

@@ -1,5 +1,4 @@
 using System.Collections.ObjectModel;
-using System.IO;
 using System.Text;
 using System.Text.Json;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -10,6 +9,16 @@ using MapleItemDB.Infrastructure.Cache;
 using Microsoft.Extensions.Logging;
 
 namespace MapleItemDB.UI.ViewModels;
+
+/// <summary>
+/// 分类选项 (ComboBox 绑定用)
+/// </summary>
+public record CategoryOption(string Label, ItemCategory? Value);
+
+/// <summary>
+/// 装备子分类选项 (ComboBox 绑定用)
+/// </summary>
+public record SubCategoryOption(string Label, string? Value);
 
 /// <summary>
 /// 主窗口 ViewModel
@@ -51,7 +60,7 @@ public partial class MainViewModel : ObservableObject
     /// 格式化后的属性行列表 (游戏风格)
     /// </summary>
     [ObservableProperty]
-    private List<string> _formattedStats = [];
+    private List<StatsLine> _formattedStats = [];
 
     /// <summary>
     /// 套装效果文本
@@ -65,6 +74,68 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _hasSetItem;
 
+    /// <summary>
+    /// 分类筛选选项列表
+    /// </summary>
+    public List<CategoryOption> CategoryOptions { get; } =
+    [
+        new("全部", null),
+        new("装备", ItemCategory.Equip),
+        new("消耗品", ItemCategory.Consume),
+        new("其他", ItemCategory.Etc),
+        new("设置", ItemCategory.Setup),
+        new("现金", ItemCategory.Cash),
+        new("宠物", ItemCategory.Pet),
+        new("技能", ItemCategory.Skill),
+    ];
+
+    [ObservableProperty]
+    private CategoryOption _selectedCategoryOption;
+
+    /// <summary>
+    /// 装备子分类选项列表
+    /// </summary>
+    public static List<SubCategoryOption> EquipSubCategoryOptions { get; } =
+    [
+        new("全部子分类", null),
+        new("帽子", "Cap"),
+        new("上衣", "Coat"),
+        new("套服", "Longcoat"),
+        new("裤子", "Pants"),
+        new("鞋子", "Shoes"),
+        new("手套", "Glove"),
+        new("腰带", "Belt"),
+        new("肩饰", "Shoulder"),
+        new("披风", "Cape"),
+        new("盾牌", "Shield"),
+        new("戒指", "Ring"),
+        new("吊坠", "Pendant"),
+        new("勋章", "Medal"),
+        new("耳环", "Earring"),
+        new("徽章", "Badge"),
+        new("纹章", "Emblem"),
+        new("口袋", "Pocket"),
+        new("机器心脏", "Heart"),
+        new("图腾", "Totem"),
+        new("武器", "Weapon"),
+        new("辅助武器", "SecondWeapon"),
+        new("发型", "Hair"),
+        new("脸型", "Face"),
+        new("脸饰", "Accessory"),
+        new("眼饰", "EyeDecoration"),
+        new("机器人", "Android"),
+        new("骑宠", "TamingMob"),
+        new("宠物装备", "PetEquip"),
+        new("符号(ARC)", "ArcaneForce"),
+        new("符号(AUT)", "AuthenticForce"),
+    ];
+
+    [ObservableProperty]
+    private SubCategoryOption _selectedSubCategoryOption;
+
+    [ObservableProperty]
+    private bool _isEquipSelected;
+
     public MainViewModel(
         IItemRepository repository,
         IWzExtractor extractor,
@@ -75,10 +146,12 @@ public partial class MainViewModel : ObservableObject
         _extractor = extractor;
         _searchIndex = searchIndex;
         _logger = logger;
+        _selectedCategoryOption = CategoryOptions[0];
+        _selectedSubCategoryOption = EquipSubCategoryOptions[0];
     }
 
     /// <summary>
-    /// 初始化 — 预热内存搜索索引 + 加载套装缓存
+    /// 初始化 — 预热内存搜索索引 + 从数据库加载套装信息
     /// </summary>
     public async Task InitializeAsync()
     {
@@ -97,26 +170,21 @@ public partial class MainViewModel : ObservableObject
             _logger.LogError(ex, "索引加载失败");
         }
 
-        // 加载套装缓存
-        LoadSetItemCache();
+        // 从数据库加载套装信息
+        await LoadSetItemsFromDbAsync();
     }
 
-    private void LoadSetItemCache()
+    private async Task LoadSetItemsFromDbAsync()
     {
         try
         {
-            var cachePath = Path.Combine(
-                AppDomain.CurrentDomain.BaseDirectory, "Cache", "setitems.json");
-            if (File.Exists(cachePath))
-            {
-                var json = File.ReadAllText(cachePath);
-                _setItems = JsonSerializer.Deserialize<Dictionary<int, SetItemInfo>>(json) ?? [];
-                _logger.LogInformation("套装缓存加载完成: {Count} 个套装", _setItems.Count);
-            }
+            _setItems = await _repository.GetAllSetItemsAsync();
+            if (_setItems.Count > 0)
+                _logger.LogInformation("套装信息加载完成: {Count} 个套装", _setItems.Count);
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "套装缓存加载失败");
+            _logger.LogWarning(ex, "套装信息加载失败");
         }
     }
 
@@ -136,10 +204,69 @@ public partial class MainViewModel : ObservableObject
         }
     }
 
+    partial void OnSelectedCategoryOptionChanged(CategoryOption value)
+    {
+        IsEquipSelected = value.Value == ItemCategory.Equip;
+        SelectedSubCategoryOption = EquipSubCategoryOptions[0];
+    }
+
     partial void OnSelectedItemChanged(ItemEntity? value)
     {
+        if (value != null && IsSkillMode && _skillSearchCache.TryGetValue(value.ItemId, out var skill))
+        {
+            SelectedSkill = skill;
+            SkillDetailText = BuildSkillDetailText(skill);
+            FormattedStats = [];
+            HasSetItem = false;
+            SetItemDisplayText = null;
+            return;
+        }
+
+        SelectedSkill = null;
+        SkillDetailText = null;
         FormattedStats = value != null ? StatsDisplayHelper.FormatStats(value) : [];
         UpdateSetItemDisplay(value);
+    }
+
+    private static string BuildSkillDetailText(SkillEntity skill)
+    {
+        var sb = new StringBuilder();
+        sb.AppendLine($"技能ID: {skill.SkillId}");
+        sb.AppendLine($"职业ID: {skill.JobId}");
+        sb.AppendLine($"最大等级: {skill.MaxLevel}");
+        if (skill.IsHidden)
+            sb.AppendLine("(隐藏技能)");
+        if (!string.IsNullOrEmpty(skill.Description))
+        {
+            sb.AppendLine();
+            sb.AppendLine(skill.Description);
+        }
+        if (!string.IsNullOrEmpty(skill.LevelEffectsJson))
+        {
+            sb.AppendLine();
+            sb.AppendLine("── 等级效果 ──");
+            try
+            {
+                var effects = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, JsonElement>>>(skill.LevelEffectsJson);
+                if (effects != null)
+                {
+                    foreach (var (level, props) in effects)
+                    {
+                        var propTexts = props
+                            .Where(p => !p.Key.StartsWith("hs") && p.Key != "lt" && p.Key != "rb")
+                            .Select(p => $"{p.Key}={p.Value}")
+                            .ToList();
+                        if (propTexts.Count > 0)
+                            sb.AppendLine($"Lv.{level}: {string.Join(", ", propTexts)}");
+                    }
+                }
+            }
+            catch
+            {
+                // JSON 解析失败，忽略
+            }
+        }
+        return sb.ToString().TrimEnd();
     }
 
     private void UpdateSetItemDisplay(ItemEntity? item)
@@ -188,7 +315,10 @@ public partial class MainViewModel : ObservableObject
             foreach (var skill in effect.ActiveSkills)
             {
                 var skillName = skill.SkillName ?? $"技能#{skill.SkillId}";
-                props.Add($"{skillName} Lv.{skill.Level}");
+                var skillText = $"{skillName} Lv.{skill.Level}";
+                if (!string.IsNullOrEmpty(skill.Description))
+                    skillText += $" ({skill.Description})";
+                props.Add(skillText);
             }
 
             sb.Append($"【{effect.RequiredCount}件】{string.Join(", ", props)}");
@@ -197,17 +327,90 @@ public partial class MainViewModel : ObservableObject
         return sb.ToString();
     }
 
+    /// <summary>
+    /// 当前选中的技能 (搜索技能分类时)
+    /// </summary>
+    [ObservableProperty]
+    private SkillEntity? _selectedSkill;
+
+    /// <summary>
+    /// 技能详情文本
+    /// </summary>
+    [ObservableProperty]
+    private string? _skillDetailText;
+
+    /// <summary>
+    /// 是否正在查看技能
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSkillMode;
+
+    // 技能搜索结果缓存 (skillId → SkillEntity)
+    private Dictionary<int, SkillEntity> _skillSearchCache = [];
+
     [RelayCommand]
     private async Task SearchAsync()
     {
         if (string.IsNullOrWhiteSpace(SearchText)) return;
 
-        _logger.LogInformation("搜索: \"{SearchText}\"", SearchText);
+        _logger.LogInformation("搜索: \"{SearchText}\", 分类: {Category}",
+            SearchText, SelectedCategoryOption.Label);
         StatusText = "正在搜索...";
-        var results = await _repository.SearchByNameAsync(SearchText);
-        SearchResults = new ObservableCollection<ItemEntity>(results);
-        StatusText = $"找到 {results.Count} 个结果";
-        _logger.LogInformation("搜索完成: {Count} 个结果", results.Count);
+
+        if (SelectedCategoryOption.Value == ItemCategory.Skill)
+        {
+            // 技能搜索
+            IsSkillMode = true;
+            var skills = await _repository.SearchSkillsByNameAsync(SearchText);
+            _skillSearchCache = skills.ToDictionary(s => s.SkillId);
+
+            // 转换为 ItemEntity 以复用 DataGrid 显示
+            var items = skills.Select(s => new ItemEntity
+            {
+                ItemId = s.SkillId,
+                Name = s.Name,
+                Description = s.Description,
+                Category = ItemCategory.Skill,
+                SubCategory = $"职业{s.JobId}",
+                ReqLevel = s.MaxLevel,
+                IconData = s.IconData,
+            }).ToList();
+
+            SearchResults = new ObservableCollection<ItemEntity>(items);
+            StatusText = $"找到 {skills.Count} 个技能";
+            _logger.LogInformation("技能搜索完成: {Count} 个结果", skills.Count);
+        }
+        else
+        {
+            // 道具搜索
+            IsSkillMode = false;
+            _skillSearchCache.Clear();
+            var filter = new ItemQueryFilter
+            {
+                Keyword = SearchText,
+                Category = SelectedCategoryOption.Value,
+                SubCategory = SelectedSubCategoryOption?.Value,
+            };
+            var results = await _repository.QueryAsync(filter);
+            SearchResults = new ObservableCollection<ItemEntity>(results);
+            StatusText = $"找到 {results.Count} 个结果";
+            _logger.LogInformation("搜索完成: {Count} 个结果", results.Count);
+        }
+    }
+
+    [RelayCommand]
+    private void ClearSearch()
+    {
+        SearchText = "";
+        SearchResults.Clear();
+        SelectedItem = null;
+        SelectedCategoryOption = CategoryOptions[0];
+        SelectedSubCategoryOption = EquipSubCategoryOptions[0];
+        IsSkillMode = false;
+        SelectedSkill = null;
+        SkillDetailText = null;
+        _skillSearchCache.Clear();
+        StatusText = "就绪";
     }
 
     [RelayCommand]
@@ -225,33 +428,53 @@ public partial class MainViewModel : ObservableObject
         IsExtracting = true;
         ExtractionProgress = 0;
 
-        var iconDir = Path.Combine(
-            AppDomain.CurrentDomain.BaseDirectory, "Cache", "Icons");
+        // 各阶段加权进度映射: Phase → (起始百分比, 权重)
+        var phaseWeights = new Dictionary<string, (double Start, double Weight)>
+        {
+            ["加载 WZ 文件"] = (0, 5),
+            ["构建字符串池"] = (5, 5),
+            ["提取装备"] = (10, 15),
+            ["提取道具"] = (25, 15),
+            ["提取套装"] = (40, 5),
+            ["提取技能"] = (45, 10),
+            ["导出图标"] = (55, 35),
+            ["完成"] = (90, 10),
+        };
 
         var progress = new Progress<ExtractionProgress>(p =>
         {
             ExtractionStatus = p.Message ?? p.Phase;
-            if (p.Total > 0)
+            if (phaseWeights.TryGetValue(p.Phase, out var w) && p.Total > 0)
+                ExtractionProgress = w.Start + w.Weight * ((double)p.Current / p.Total);
+            else if (p.Total > 0)
                 ExtractionProgress = (double)p.Current / p.Total * 100;
         });
 
         try
         {
             _logger.LogInformation("开始提取 WZ 数据: {GameDirectory}", gameDirectory);
-            var items = await _extractor.ExtractAllAsync(gameDirectory, iconDir, progress);
-            _logger.LogInformation("WZ 提取完成: {Count} 个道具", items.Count);
+            var result = await _extractor.ExtractAllAsync(gameDirectory, progress);
+            _logger.LogInformation("WZ 提取完成: {Count} 个道具, {SetCount} 个套装",
+                result.Items.Count, result.SetItems.Count);
 
             ExtractionStatus = "正在写入数据库...";
+            ExtractionProgress = 92;
             _logger.LogInformation("开始写入数据库...");
-            await _repository.BulkUpsertAsync(items);
+            await _repository.BulkUpsertAsync(result.Items);
+            await _repository.BulkUpsertSetItemsAsync(result.SetItems.Values);
+            if (result.Skills.Count > 0)
+                await _repository.BulkUpsertSkillsAsync(result.Skills);
             _logger.LogInformation("数据库写入完成");
 
             ExtractionStatus = "正在刷新索引...";
+            ExtractionProgress = 97;
             _logger.LogDebug("刷新搜索索引...");
             await InitializeAsync();
 
-            StatusText = $"提取完成 — 共 {items.Count} 个道具";
-            _logger.LogInformation("全部完成: {Count} 个道具", items.Count);
+            ExtractionProgress = 100;
+            StatusText = $"提取完成 — 共 {result.Items.Count} 个道具, {result.Skills.Count} 个技能";
+            _logger.LogInformation("全部完成: {Count} 个道具, {SkillCount} 个技能",
+                result.Items.Count, result.Skills.Count);
         }
         catch (Exception ex)
         {
@@ -261,6 +484,7 @@ public partial class MainViewModel : ObservableObject
         finally
         {
             IsExtracting = false;
+            ExtractionProgress = 0;
         }
     }
 }
@@ -362,58 +586,76 @@ public static class StatsDisplayHelper
         [9] = "更慢(9)",
     };
 
-    /// <summary>
-    /// 将 ItemEntity 的属性格式化为游戏风格文本行
-    /// </summary>
-    public static List<string> FormatStats(ItemEntity item)
+    // 特殊标志键名集合
+    private static readonly HashSet<string> FlagKeys =
+    [
+        "_flag_only", "_flag_tradeBlock", "_flag_equipTradeBlock",
+        "_flag_accountSharable", "_flag_timeLimited", "_flag_superiorEqp",
+        "_flag_noPotential", "_flag_fixedPotential",
+    ];
+
+    private static readonly Dictionary<string, string> FlagTexts = new()
     {
-        var lines = new List<string>();
+        ["_flag_only"]              = "唯一道具",
+        ["_flag_tradeBlock"]        = "不可交易",
+        ["_flag_equipTradeBlock"]   = "装备后不可交易",
+        ["_flag_accountSharable"]   = "账号内共享",
+        ["_flag_timeLimited"]       = "限时道具",
+        ["_flag_superiorEqp"]       = "星之力增强道具",
+        ["_flag_noPotential"]       = "不可使用潜能",
+        ["_flag_fixedPotential"]    = "固定潜能",
+    };
+
+    /// <summary>
+    /// 将 ItemEntity 的属性格式化为游戏风格文本行 (StatsLine)，标志行置顶
+    /// </summary>
+    public static List<StatsLine> FormatStats(ItemEntity item)
+    {
+        var normalLines = new List<StatsLine>();
+        var flagLines = new List<StatsLine>();
 
         // 需求等级
-        AddLine(lines, "reqLevel", item.ReqLevel);
+        AddLine(normalLines, "reqLevel", item.ReqLevel);
 
         // 升级可用次数 (从 DynamicStats)
         var dynamic = ParseDynamic(item.DynamicStats);
-        AddDynamicLine(lines, dynamic, "upgrade_slots");
+        AddDynamicLine(normalLines, dynamic, "upgrade_slots");
 
         // 核心属性
-        AddLine(lines, "incSTR", item.IncSTR);
-        AddLine(lines, "incDEX", item.IncDEX);
-        AddLine(lines, "incINT", item.IncINT);
-        AddLine(lines, "incLUK", item.IncLUK);
-        AddLine(lines, "incMHP", item.IncMHP);
-        AddLine(lines, "incMMP", item.IncMMP);
-        AddLine(lines, "incPAD", item.IncPAD);
-        AddLine(lines, "incMAD", item.IncMAD);
-        AddLine(lines, "incPDD", item.IncPDD);
-        AddLine(lines, "incMDD", item.IncMDD);
+        AddLine(normalLines, "incSTR", item.IncSTR);
+        AddLine(normalLines, "incDEX", item.IncDEX);
+        AddLine(normalLines, "incINT", item.IncINT);
+        AddLine(normalLines, "incLUK", item.IncLUK);
+        AddLine(normalLines, "incMHP", item.IncMHP);
+        AddLine(normalLines, "incMMP", item.IncMMP);
+        AddLine(normalLines, "incPAD", item.IncPAD);
+        AddLine(normalLines, "incMAD", item.IncMAD);
+        AddLine(normalLines, "incPDD", item.IncPDD);
+        AddLine(normalLines, "incMDD", item.IncMDD);
 
         // 动态属性
-        AddDynamicLine(lines, dynamic, "boss_dmg");
-        AddDynamicLine(lines, dynamic, "ied");
-        AddDynamicLine(lines, dynamic, "total_dmg");
-        AddDynamicLine(lines, dynamic, "all_stat_pct");
-        AddDynamicLine(lines, dynamic, "all_stat");
-        AddDynamicLine(lines, dynamic, "speed");
-        AddDynamicLine(lines, dynamic, "jump");
-        AddDynamicLine(lines, dynamic, "knockback");
+        AddDynamicLine(normalLines, dynamic, "boss_dmg");
+        AddDynamicLine(normalLines, dynamic, "ied");
+        AddDynamicLine(normalLines, dynamic, "total_dmg");
+        AddDynamicLine(normalLines, dynamic, "all_stat_pct");
+        AddDynamicLine(normalLines, dynamic, "all_stat");
+        AddDynamicLine(normalLines, dynamic, "speed");
+        AddDynamicLine(normalLines, dynamic, "jump");
+        AddDynamicLine(normalLines, dynamic, "knockback");
 
         // 攻击速度 (特殊格式)
         if (dynamic.TryGetValue("attack_speed", out var atkSpd))
         {
             var spdName = AttackSpeedNames.GetValueOrDefault(atkSpd, atkSpd.ToString());
-            lines.Add($"攻击速度 : {spdName}");
+            normalLines.Add(new StatsLine($"攻击速度 : {spdName}"));
         }
 
-        // 特殊标志
-        AddFlagLine(lines, dynamic, "_flag_only",              "唯一道具");
-        AddFlagLine(lines, dynamic, "_flag_tradeBlock",        "不可交易");
-        AddFlagLine(lines, dynamic, "_flag_equipTradeBlock",   "装备后不可交易");
-        AddFlagLine(lines, dynamic, "_flag_accountSharable",   "账号内共享");
-        AddFlagLine(lines, dynamic, "_flag_timeLimited",       "限时道具");
-        AddFlagLine(lines, dynamic, "_flag_superiorEqp",       "星之力增强道具");
-        AddFlagLine(lines, dynamic, "_flag_noPotential",       "不可使用潜能");
-        AddFlagLine(lines, dynamic, "_flag_fixedPotential",    "固定潜能");
+        // 特殊标志 → flagLines (IsFlag=true，橙色置顶)
+        foreach (var (key, text) in FlagTexts)
+        {
+            if (dynamic.TryGetValue(key, out var val) && val != 0)
+                flagLines.Add(new StatsLine(text, IsFlag: true));
+        }
 
         // 消耗品属性
         if (!string.IsNullOrEmpty(item.ConsumeSpec))
@@ -421,17 +663,19 @@ public static class StatsDisplayHelper
             var consume = ParseDynamic(item.ConsumeSpec);
             if (consume.Count > 0)
             {
-                lines.Add("──── 使用效果 ────");
+                normalLines.Add(new StatsLine("──── 使用效果 ────"));
                 foreach (var (key, val) in consume)
                 {
                     var display = FormatConsumeStat(key, val);
                     if (display != null)
-                        lines.Add(display);
+                        normalLines.Add(new StatsLine(display));
                 }
             }
         }
 
-        return lines;
+        // 标志行置顶
+        flagLines.AddRange(normalLines);
+        return flagLines;
     }
 
     /// <summary>
@@ -451,25 +695,19 @@ public static class StatsDisplayHelper
         return null;
     }
 
-    private static void AddLine(List<string> lines, string key, int? value)
+    private static void AddLine(List<StatsLine> lines, string key, int? value)
     {
         if (value.HasValue && value.Value != 0 && StatFormats.TryGetValue(key, out var fmt))
-            lines.Add(string.Format(fmt, value.Value));
+            lines.Add(new StatsLine(string.Format(fmt, value.Value)));
     }
 
-    private static void AddDynamicLine(List<string> lines, Dictionary<string, int> dynamic, string key)
+    private static void AddDynamicLine(List<StatsLine> lines, Dictionary<string, int> dynamic, string key)
     {
         if (dynamic.TryGetValue(key, out var val) && val != 0)
         {
             if (StatFormats.TryGetValue(key, out var fmt))
-                lines.Add(string.Format(fmt, val));
+                lines.Add(new StatsLine(string.Format(fmt, val)));
         }
-    }
-
-    private static void AddFlagLine(List<string> lines, Dictionary<string, int> dynamic, string key, string text)
-    {
-        if (dynamic.TryGetValue(key, out var val) && val != 0)
-            lines.Add(text);
     }
 
     private static Dictionary<string, int> ParseDynamic(string? json)

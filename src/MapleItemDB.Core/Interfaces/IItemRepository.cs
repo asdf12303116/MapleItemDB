@@ -21,4 +21,16 @@ public interface IItemRepository
 
     /// <summary>获取全量 Id-Name 索引 (用于内存搜索)</summary>
     Task<IReadOnlyList<(int Id, string Name)>> GetIdNameIndexAsync();
+
+    /// <summary>批量插入或更新套装信息</summary>
+    Task BulkUpsertSetItemsAsync(IEnumerable<SetItemInfo> setItems);
+
+    /// <summary>获取全部套装信息</summary>
+    Task<Dictionary<int, SetItemInfo>> GetAllSetItemsAsync();
+
+    /// <summary>批量插入或更新技能</summary>
+    Task BulkUpsertSkillsAsync(IEnumerable<SkillEntity> skills);
+
+    /// <summary>按名称搜索技能</summary>
+    Task<IReadOnlyList<SkillEntity>> SearchSkillsByNameAsync(string keyword, int limit = 50);
 }

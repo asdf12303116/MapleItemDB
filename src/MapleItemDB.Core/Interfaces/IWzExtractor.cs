@@ -8,19 +8,25 @@ namespace MapleItemDB.Core.Interfaces;
 public interface IWzExtractor
 {
     /// <summary>
-    /// 从游戏目录提取所有道具数据
+    /// 从游戏目录提取所有道具数据和套装信息
     /// </summary>
     /// <param name="gameDirectory">游戏安装目录 (包含 Base.wz 的目录)</param>
-    /// <param name="iconOutputDir">图标导出目录</param>
     /// <param name="progress">进度回调</param>
     /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>提取到的道具实体列表</returns>
-    Task<IReadOnlyList<ItemEntity>> ExtractAllAsync(
+    /// <returns>提取结果 (道具 + 套装)</returns>
+    Task<ExtractionResult> ExtractAllAsync(
         string gameDirectory,
-        string iconOutputDir,
         IProgress<ExtractionProgress>? progress = null,
         CancellationToken cancellationToken = default);
 }
+
+/// <summary>
+/// 提取结果 — 包含道具、套装和技能信息
+/// </summary>
+public record ExtractionResult(
+    IReadOnlyList<ItemEntity> Items,
+    IReadOnlyDictionary<int, SetItemInfo> SetItems,
+    IReadOnlyList<SkillEntity> Skills);
 
 /// <summary>
 /// 提取进度信息

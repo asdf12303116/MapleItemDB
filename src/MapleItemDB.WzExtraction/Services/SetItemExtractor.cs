@@ -183,6 +183,9 @@ public class SetItemExtractor
         return info;
     }
 
+    // ItemOption.img level 节点中的非属性元数据键，解析时需跳过
+    private static readonly HashSet<string> OptionMetaKeys = ["fixedGrade"];
+
     /// <summary>
     /// 解析 Option 子节点: 通过 ItemOption.img 将潜能引用转为实际属性值
     /// WZ 结构: Option/0/{option=40301, level=5} → ItemOption.img/040301/level/5/{bdR=30, ...}
@@ -220,6 +223,10 @@ public class SetItemExtractor
                 // 读取该等级下的所有属性
                 foreach (var statNode in levelData.Nodes)
                 {
+                    // 跳过非属性的元数据键 (如 fixedGrade)
+                    if (OptionMetaKeys.Contains(statNode.Text))
+                        continue;
+
                     try
                     {
                         var statVal = Convert.ToInt32(statNode.Value);
@@ -257,14 +264,19 @@ public class SetItemExtractor
             if (skillId.HasValue)
             {
                 string? skillName = null;
+                string? skillDesc = null;
                 if (_stringPool != null && _stringPool.TryGetValue(skillId.Value, out var entry))
+                {
                     skillName = entry.Name;
+                    skillDesc = entry.Description;
+                }
 
                 effect.ActiveSkills.Add(new SetItemActiveSkill
                 {
                     SkillId = skillId.Value,
                     Level = skillLevel ?? 1,
                     SkillName = skillName,
+                    Description = skillDesc,
                 });
             }
         }

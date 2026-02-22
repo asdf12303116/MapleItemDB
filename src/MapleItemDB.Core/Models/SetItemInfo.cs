@@ -67,4 +67,7 @@ public class SetItemActiveSkill
 
     /// <summary>技能名称</summary>
     public string? SkillName { get; set; }
+
+    /// <summary>技能描述</summary>
+    public string? Description { get; set; }
 }

@@ -10,5 +10,6 @@ public enum ItemCategory
     Etc,     // 其他
     Setup,   // 设置 (椅子/家具)
     Cash,    // 现金道具
-    Pet      // 宠物
+    Pet,     // 宠物
+    Skill    // 技能 (仅用于搜索分类，不存储在道具表)
 }

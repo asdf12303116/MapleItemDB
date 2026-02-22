@@ -6,7 +6,7 @@ using WzComparerR2.WzLib;
 namespace MapleItemDB.WzExtraction.Services;
 
 /// <summary>
-/// 道具图标导出器 — 将 WZ 中的图标提取为 PNG 文件
+/// 道具图标导出器 — 将 WZ 中的图标提取为 PNG byte[]
 /// </summary>
 public class IconExporter
 {
@@ -15,23 +15,22 @@ public class IconExporter
     /// </summary>
     /// <param name="imgNode">装备 .img 节点 (已提取)</param>
     /// <param name="itemId">道具 ID</param>
-    /// <param name="outputDir">输出目录</param>
-    /// <returns>导出的文件路径，失败则返回 null</returns>
-    public string? ExportFromEquip(Wz_Node imgNode, int itemId, string outputDir)
+    /// <returns>PNG 二进制数据，失败则返回 null</returns>
+    public byte[]? ExportFromEquip(Wz_Node imgNode, int itemId)
     {
         var infoNode = imgNode.Nodes["info"];
         if (infoNode == null) return null;
 
         // 优先 info/iconRaw, info/icon
         var iconNode = infoNode.Nodes["iconRaw"] ?? infoNode.Nodes["icon"];
-        var result = ExportPngNode(iconNode, itemId, outputDir);
+        var result = ExportPngNode(iconNode);
         if (result != null) return result;
 
         // 回退: 脸型/外挂等道具可能图标在 default/face 或 0/face
         foreach (var fallbackPath in FallbackIconPaths)
         {
             var node = NavigatePath(imgNode, fallbackPath);
-            result = ExportPngNode(node, itemId, outputDir);
+            result = ExportPngNode(node);
             if (result != null) return result;
         }
 
@@ -96,9 +95,8 @@ public class IconExporter
     /// <param name="imgNode">装备 .img 节点 (已提取)</param>
     /// <param name="itemId">道具 ID</param>
     /// <param name="subCategory">子分类</param>
-    /// <param name="outputDir">输出目录</param>
-    /// <returns>导出的文件路径，失败则返回 null</returns>
-    public string? ExportPreview(Wz_Node imgNode, int itemId, string subCategory, string outputDir)
+    /// <returns>PNG 二进制数据，失败则返回 null</returns>
+    public byte[]? ExportPreview(Wz_Node imgNode, int itemId, string subCategory)
     {
         // 根据子分类获取预览路径列表
         var paths = PreviewPaths.GetValueOrDefault(subCategory) ?? [];
@@ -107,7 +105,7 @@ public class IconExporter
         foreach (var pathSegments in paths)
         {
             var node = NavigatePath(imgNode, pathSegments);
-            var result = ExportPngNode(node, itemId, outputDir, "_preview");
+            var result = ExportPngNode(node);
             if (result != null) return result;
         }
 
@@ -115,7 +113,7 @@ public class IconExporter
         foreach (var pathSegments in FallbackPreviewPaths)
         {
             var node = NavigatePath(imgNode, pathSegments);
-            var result = ExportPngNode(node, itemId, outputDir, "_preview");
+            var result = ExportPngNode(node);
             if (result != null) return result;
         }
 
@@ -138,19 +136,18 @@ public class IconExporter
     /// </summary>
     /// <param name="idNode">道具 ID 节点 (在 .img 内部)</param>
     /// <param name="itemId">道具 ID</param>
-    /// <param name="outputDir">输出目录</param>
-    /// <returns>导出的文件路径，失败则返回 null</returns>
-    public string? ExportFromItem(Wz_Node idNode, int itemId, string outputDir)
+    /// <returns>PNG 二进制数据，失败则返回 null</returns>
+    public byte[]? ExportFromItem(Wz_Node idNode, int itemId)
     {
         // 普通道具图标路径: info/icon 或 info/iconRaw
         var infoNode = idNode.Nodes["info"];
         if (infoNode == null) return null;
 
         var iconNode = infoNode.Nodes["iconRaw"] ?? infoNode.Nodes["icon"];
-        return ExportPngNode(iconNode, itemId, outputDir);
+        return ExportPngNode(iconNode);
     }
 
-    private string? ExportPngNode(Wz_Node? iconNode, int itemId, string outputDir, string suffix = "")
+    private byte[]? ExportPngNode(Wz_Node? iconNode)
     {
         // 使用 ResolvePng 处理 UOL / _inlink / _outlink 引用
         using var bitmap = iconNode.ResolvePng();
@@ -159,10 +156,9 @@ public class IconExporter
 
         try
         {
-            Directory.CreateDirectory(outputDir);
-            var filePath = Path.Combine(outputDir, $"{itemId}{suffix}.png");
-            bitmap.Save(filePath, ImageFormat.Png);
-            return filePath;
+            using var ms = new MemoryStream();
+            bitmap.Save(ms, ImageFormat.Png);
+            return ms.ToArray();
         }
         catch
         {

@@ -19,18 +19,16 @@ public class WzExtractionService : IWzExtractor, IDisposable
         _logger = logger;
     }
 
-    public async Task<IReadOnlyList<ItemEntity>> ExtractAllAsync(
+    public async Task<ExtractionResult> ExtractAllAsync(
         string gameDirectory,
-        string iconOutputDir,
         IProgress<ExtractionProgress>? progress = null,
         CancellationToken cancellationToken = default)
     {
-        return await Task.Run(() => ExtractAllInternal(gameDirectory, iconOutputDir, progress, cancellationToken), cancellationToken);
+        return await Task.Run(() => ExtractAllInternal(gameDirectory, progress, cancellationToken), cancellationToken);
     }
 
-    private List<ItemEntity> ExtractAllInternal(
+    private ExtractionResult ExtractAllInternal(
         string gameDirectory,
-        string iconOutputDir,
         IProgress<ExtractionProgress>? progress,
         CancellationToken ct)
     {
@@ -130,27 +128,20 @@ public class WzExtractionService : IWzExtractor, IDisposable
         _logger.LogInformation("套装提取完成: {Count} 个套装", setItems.Count);
         progress?.Report(new ExtractionProgress("提取套装", 1, 1, $"已提取 {setItems.Count} 个套装"));
 
-        // 保存套装缓存到 JSON
-        if (!string.IsNullOrEmpty(iconOutputDir))
-        {
-            var cacheDir = Path.GetDirectoryName(iconOutputDir)!;
-            Directory.CreateDirectory(cacheDir);
-            var setItemsPath = Path.Combine(cacheDir, "setitems.json");
-            var json = JsonSerializer.Serialize(setItems, new JsonSerializerOptions { WriteIndented = false });
-            File.WriteAllText(setItemsPath, json);
-            _logger.LogInformation("套装缓存已保存: {Path}", setItemsPath);
-        }
+        // 7. 提取技能
+        _logger.LogInformation("开始提取技能...");
+        progress?.Report(new ExtractionProgress("提取技能", 0, 1, "正在解析 Skill..."));
+        var skillExtractor = new SkillExtractor(stringPoolBuilder.Pool);
+        var skills = skillExtractor.Extract(wzRoot, progress, ct);
+        _logger.LogInformation("技能提取完成: {Count} 个技能", skills.Count);
 
-        // 7. 导出图标 (可选)
-        if (!string.IsNullOrEmpty(iconOutputDir))
-        {
-            progress?.Report(new ExtractionProgress("导出图标", 0, allItems.Count, "正在导出道具图标..."));
-            ExportIcons(wzRoot, allItems, iconOutputDir, new IconExporter(), progress, ct);
-        }
+        // 8. 导出图标 (内存 BLOB)
+        progress?.Report(new ExtractionProgress("导出图标", 0, allItems.Count, "正在导出道具图标..."));
+        ExportIcons(wzRoot, allItems, new IconExporter(), progress, ct);
 
-        progress?.Report(new ExtractionProgress("完成", allItems.Count, allItems.Count, $"共提取 {allItems.Count} 个道具"));
-        _logger.LogInformation("全部提取完成: {Count} 个道具", allItems.Count);
-        return allItems;
+        progress?.Report(new ExtractionProgress("完成", allItems.Count, allItems.Count, $"共提取 {allItems.Count} 个道具, {skills.Count} 个技能"));
+        _logger.LogInformation("全部提取完成: {Count} 个道具, {SkillCount} 个技能", allItems.Count, skills.Count);
+        return new ExtractionResult(allItems, setItems, skills);
     }
 
     /// <summary>
@@ -230,7 +221,6 @@ public class WzExtractionService : IWzExtractor, IDisposable
     private void ExportIcons(
         Wz_Node wzRoot,
         List<ItemEntity> items,
-        string outputDir,
         IconExporter exporter,
         IProgress<ExtractionProgress>? progress,
         CancellationToken ct)
@@ -238,8 +228,6 @@ public class WzExtractionService : IWzExtractor, IDisposable
         int exported = 0;
         int total = items.Count;
         var itemDict = items.ToDictionary(i => i.ItemId);
-        // outputDir 已经是最终的图标目录，不再拼子目录
-        var iconDir = outputDir;
 
         // 遍历 Character 节点导出装备图标
         var characterNode = wzRoot.Nodes["Character"];
@@ -270,17 +258,17 @@ public class WzExtractionService : IWzExtractor, IDisposable
                     if (!img.TryExtract())
                         continue;
 
-                    var path = exporter.ExportFromEquip(img.Node, itemId, iconDir);
-                    if (path != null)
-                        item.IconPath = path;
+                    var iconData = exporter.ExportFromEquip(img.Node, itemId);
+                    if (iconData != null)
+                        item.IconData = iconData;
 
                     // 外观装备预览图
                     if (item.SubCategory != null &&
                         (PreviewSubCategories.Contains(item.SubCategory) || item.IsCash))
                     {
-                        var previewPath = exporter.ExportPreview(img.Node, itemId, item.SubCategory, iconDir);
-                        if (previewPath != null)
-                            item.PreviewPath = previewPath;
+                        var previewData = exporter.ExportPreview(img.Node, itemId, item.SubCategory);
+                        if (previewData != null)
+                            item.PreviewData = previewData;
                     }
 
                     exported++;
@@ -315,9 +303,9 @@ public class WzExtractionService : IWzExtractor, IDisposable
                         if (!itemDict.TryGetValue(itemId, out var item))
                             continue;
 
-                        var path = exporter.ExportFromItem(idNode, itemId, iconDir);
-                        if (path != null)
-                            item.IconPath = path;
+                        var iconData = exporter.ExportFromItem(idNode, itemId);
+                        if (iconData != null)
+                            item.IconData = iconData;
 
                         exported++;
                         if (exported % 500 == 0)
