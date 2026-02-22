@@ -45,7 +45,7 @@ public class ItemRepository : IItemRepository
 
         if (!string.IsNullOrWhiteSpace(filter.Keyword))
         {
-            sb.Append(" AND name LIKE @Keyword");
+            sb.Append(" AND (name LIKE @Keyword OR description LIKE @Keyword)");
             parameters.Add("Keyword", $"%{filter.Keyword}%");
         }
         if (filter.Category.HasValue)
@@ -106,14 +106,14 @@ public class ItemRepository : IItemRepository
                 inc_str, inc_dex, inc_int, inc_luk,
                 inc_pad, inc_mad, inc_pdd, inc_mdd, inc_mhp, inc_mmp,
                 dynamic_stats, consume_spec,
-                is_cash, price, icon_data, preview_data, setitem_id, extracted_at
+                is_cash, price, icon_data, preview_data, setitem_id, sn, extracted_at
             ) VALUES (
                 @item_id, @name, @description, @category, @sub_category,
                 @req_level, @req_str, @req_dex, @req_int, @req_luk,
                 @inc_str, @inc_dex, @inc_int, @inc_luk,
                 @inc_pad, @inc_mad, @inc_pdd, @inc_mdd, @inc_mhp, @inc_mmp,
                 @dynamic_stats, @consume_spec,
-                @is_cash, @price, @icon_data, @preview_data, @setitem_id, @extracted_at
+                @is_cash, @price, @icon_data, @preview_data, @setitem_id, @sn, @extracted_at
             )
             ON CONFLICT(item_id) DO UPDATE SET
                 name=excluded.name, description=excluded.description,
@@ -128,7 +128,7 @@ public class ItemRepository : IItemRepository
                 dynamic_stats=excluded.dynamic_stats, consume_spec=excluded.consume_spec,
                 is_cash=excluded.is_cash, price=excluded.price,
                 icon_data=excluded.icon_data, preview_data=excluded.preview_data,
-                setitem_id=excluded.setitem_id,
+                setitem_id=excluded.setitem_id, sn=excluded.sn,
                 extracted_at=excluded.extracted_at
             """;
 
@@ -241,8 +241,8 @@ public class ItemRepository : IItemRepository
         else
         {
             var sql = limit > 0
-                ? "SELECT * FROM dim_skills WHERE name LIKE @Keyword LIMIT @Limit"
-                : "SELECT * FROM dim_skills WHERE name LIKE @Keyword";
+                ? "SELECT * FROM dim_skills WHERE (name LIKE @Keyword OR description LIKE @Keyword) LIMIT @Limit"
+                : "SELECT * FROM dim_skills WHERE (name LIKE @Keyword OR description LIKE @Keyword)";
             rows = await conn.QueryAsync<SkillRow>(sql, new { Keyword = $"%{keyword}%", Limit = limit });
         }
         return rows.Select(r => r.ToEntity()).ToList();
@@ -280,6 +280,7 @@ public class ItemRepository : IItemRepository
         public byte[]? icon_data { get; set; }
         public byte[]? preview_data { get; set; }
         public int? setitem_id { get; set; }
+        public int? sn { get; set; }
         public string extracted_at { get; set; } = "";
 
         public ItemEntity ToEntity() => new()
@@ -311,6 +312,7 @@ public class ItemRepository : IItemRepository
             IconData = icon_data,
             PreviewData = preview_data,
             SetItemId = setitem_id,
+            Sn = sn,
             ExtractedAt = DateTime.TryParse(extracted_at, out var dt) ? dt : DateTime.MinValue,
         };
 
@@ -343,6 +345,7 @@ public class ItemRepository : IItemRepository
             icon_data = e.IconData,
             preview_data = e.PreviewData,
             setitem_id = e.SetItemId,
+            sn = e.Sn,
             extracted_at = e.ExtractedAt.ToString("O"),
         };
     }

@@ -8,6 +8,7 @@
         mc:Ignorable="d"
         Title="MapleItemDB - 道具数据库" Height="700" Width="1100"
         WindowStartupLocation="CenterScreen"
+        Icon="app.ico"
         d:DataContext="{d:DesignInstance vm:MainViewModel}">
 
     <Window.Resources>
@@ -19,6 +20,7 @@
         <converters:ByteArrayToImageConverter x:Key="ByteArrayToImageConverter"/>
         <converters:FlagToColorConverter x:Key="FlagToColorConverter"/>
         <converters:InvertBoolToVisibilityConverter x:Key="InvertBoolToVisibilityConverter"/>
+        <converters:BindingProxy x:Key="VmProxy" Data="{Binding}"/>
     </Window.Resources>
 
     <Grid Margin="8">
@@ -90,7 +92,8 @@
             </Grid.ColumnDefinitions>
 
             <!-- 搜索结果列表 -->
-            <DataGrid Grid.Column="0"
+            <DataGrid x:Name="SearchResultsGrid"
+                      Grid.Column="0"
                       ItemsSource="{Binding SearchResults}"
                       SelectedItem="{Binding SelectedItem}"
                       AutoGenerateColumns="False"
@@ -99,12 +102,25 @@
                       Margin="0,0,4,0"
                       GridLinesVisibility="Horizontal"
                       HeadersVisibility="Column">
+                <DataGrid.ContextMenu>
+                    <ContextMenu>
+                        <MenuItem Header="复制名称" Command="{Binding CopySelectedItemNameCommand}"/>
+                        <MenuItem Header="复制ID" Command="{Binding CopySelectedItemIdCommand}"/>
+                        <MenuItem Header="复制SN"
+                                  Command="{Binding Data.CopySelectedItemSnCommand, Source={StaticResource VmProxy}}"
+                                  Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                    </ContextMenu>
+                </DataGrid.ContextMenu>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="ID" Binding="{Binding ItemId}" Width="80"/>
                     <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="*"/>
                     <DataGridTextColumn Header="分类" Binding="{Binding Category, Converter={StaticResource CategoryConverter}}" Width="50"/>
-                    <DataGridTextColumn Header="子分类" Binding="{Binding SubCategory, Converter={StaticResource SubCategoryConverter}}" Width="60"/>
-                    <DataGridTextColumn Header="等级" Binding="{Binding ReqLevel}" Width="45"/>
+                    <DataGridTextColumn Header="子分类" Binding="{Binding SubCategory, Converter={StaticResource SubCategoryConverter}}" Width="60"
+                                        Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource InvertBoolToVisibilityConverter}}"/>
+                    <DataGridTextColumn Header="等级" Binding="{Binding ReqLevel}" Width="45"
+                                        Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource InvertBoolToVisibilityConverter}}"/>
+                    <DataGridTextColumn Header="SN" Binding="{Binding Sn}" Width="80"
+                                        Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </DataGrid.Columns>
             </DataGrid>
 
@@ -140,13 +156,7 @@
                                 <TextBlock Margin="0,4,0,0">
                                     <Run Text="ID: "/><Run Text="{Binding ItemId, Mode=OneWay}"/>
                                     <Run Text=" | "/>
-                                    <InlineUIContainer BaselineAlignment="TextBottom">
-                                        <TextBlock Text="{Binding Category, Converter={StaticResource CategoryConverter}}"/>
-                                    </InlineUIContainer>
-                                    <Run Text=" / "/>
-                                    <InlineUIContainer BaselineAlignment="TextBottom">
-                                        <TextBlock Text="{Binding SubCategory, Converter={StaticResource SubCategoryConverter}}"/>
-                                    </InlineUIContainer>
+                                    <Run Text="{Binding DataContext.SelectedItemCategoryDisplay, RelativeSource={RelativeSource AncestorType=Window}, Mode=OneWay}"/>
                                 </TextBlock>
                                 <TextBlock Text="{Binding Description}"
                                            Foreground="Gray"

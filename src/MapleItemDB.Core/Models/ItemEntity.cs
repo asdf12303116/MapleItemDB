@@ -61,6 +61,9 @@ public class ItemEntity
     /// <summary>套装 ID</summary>
     public int? SetItemId { get; set; }
 
+    /// <summary>商城 SN 编号</summary>
+    public int? Sn { get; set; }
+
     /// <summary>提取时间戳</summary>
     public DateTime ExtractedAt { get; set; }
 }

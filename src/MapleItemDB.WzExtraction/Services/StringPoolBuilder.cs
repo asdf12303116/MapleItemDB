@@ -27,7 +27,7 @@ public class StringPoolBuilder
         // String 下包含: Eqp.img, Consume.img, Etc.img, Ins.img (Setup), Cash.img, Pet.img 等
         BuildFromEqp(stringWzNode);
         BuildFromCategory(stringWzNode, "Consume.img");
-        BuildFromCategory(stringWzNode, "Etc.img");
+        BuildFromNestedCategory(stringWzNode, "Etc.img");
         BuildFromCategory(stringWzNode, "Ins.img");    // Setup/Install
         BuildFromCategory(stringWzNode, "Cash.img");
         BuildFromCategory(stringWzNode, "Pet.img");
@@ -61,7 +61,7 @@ public class StringPoolBuilder
     }
 
     /// <summary>
-    /// 通用分类字符串解析 (Consume, Etc, Ins, Cash, Pet)
+    /// 通用分类字符串解析 (Consume, Ins, Cash, Pet)
     /// </summary>
     private void BuildFromCategory(Wz_Node stringNode, string imgName)
     {
@@ -73,6 +73,26 @@ public class StringPoolBuilder
             if (int.TryParse(idNode.Text, out var itemId))
             {
                 AddEntry(itemId, idNode);
+            }
+        }
+    }
+
+    /// <summary>
+    /// 带子分类的字符串解析 (Etc.img 有额外一层: Etc.img → 子分类 → itemId)
+    /// </summary>
+    private void BuildFromNestedCategory(Wz_Node stringNode, string imgName)
+    {
+        var root = GetExtractedImgNode(stringNode, imgName);
+        if (root == null) return;
+
+        foreach (var subCatNode in root.Nodes)
+        {
+            foreach (var idNode in subCatNode.Nodes)
+            {
+                if (int.TryParse(idNode.Text, out var itemId))
+                {
+                    AddEntry(itemId, idNode);
+                }
             }
         }
     }

@@ -1,4 +1,7 @@
+using System.ComponentModel;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media;
 using MapleItemDB.UI.ViewModels;
 using Microsoft.Win32;
 
@@ -10,6 +13,34 @@ public partial class MainWindow : Window
     {
         InitializeComponent();
         DataContext = viewModel;
+        viewModel.PropertyChanged += OnViewModelPropertyChanged;
+    }
+
+    private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName == nameof(MainViewModel.SearchResults))
+        {
+            // 等待 DataGrid 渲染完成后滚动到顶部
+            Dispatcher.InvokeAsync(() =>
+            {
+                var scrollViewer = FindVisualChild<ScrollViewer>(SearchResultsGrid);
+                scrollViewer?.ScrollToTop();
+            }, System.Windows.Threading.DispatcherPriority.Loaded);
+        }
+    }
+
+    private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
+    {
+        for (int i = 0; i < VisualTreeHelper.GetChildrenCount(parent); i++)
+        {
+            var child = VisualTreeHelper.GetChild(parent, i);
+            if (child is T result)
+                return result;
+            var descendant = FindVisualChild<T>(child);
+            if (descendant != null)
+                return descendant;
+        }
+        return null;
     }
 
     private async void OnExtractClick(object sender, RoutedEventArgs e)

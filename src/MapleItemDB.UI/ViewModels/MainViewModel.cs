@@ -83,6 +83,12 @@ public partial class MainViewModel : ObservableObject
     private bool _hasSetItem;
 
     /// <summary>
+    /// 详情面板的分类显示文本 (如 "装备 / 武器 / 双手斧")
+    /// </summary>
+    [ObservableProperty]
+    private string _selectedItemCategoryDisplay = "";
+
+    /// <summary>
     /// 分类筛选选项列表
     /// </summary>
     public List<CategoryOption> CategoryOptions { get; } =
@@ -143,6 +149,9 @@ public partial class MainViewModel : ObservableObject
 
     [ObservableProperty]
     private bool _isEquipSelected;
+
+    [ObservableProperty]
+    private bool _isCashSelected;
 
     public MainViewModel(
         IItemRepository repository,
@@ -215,11 +224,14 @@ public partial class MainViewModel : ObservableObject
     partial void OnSelectedCategoryOptionChanged(CategoryOption value)
     {
         IsEquipSelected = value.Value == ItemCategory.Equip;
+        IsCashSelected = value.Value == ItemCategory.Cash;
         SelectedSubCategoryOption = EquipSubCategoryOptions[0];
     }
 
     partial void OnSelectedItemChanged(ItemEntity? value)
     {
+        SelectedItemCategoryDisplay = BuildCategoryDisplay(value);
+
         if (value != null && IsSkillMode && _skillSearchCache.TryGetValue(value.ItemId, out var skill))
         {
             SelectedSkill = skill;
@@ -236,6 +248,46 @@ public partial class MainViewModel : ObservableObject
         FormattedStats = value != null ? StatsDisplayHelper.FormatStats(value) : [];
         HasFormattedStats = FormattedStats.Count > 0;
         UpdateSetItemDisplay(value);
+    }
+
+    private static readonly Dictionary<ItemCategory, string> CategoryDisplayNames = new()
+    {
+        [ItemCategory.Equip] = "装备",
+        [ItemCategory.Consume] = "消耗",
+        [ItemCategory.Etc] = "其他",
+        [ItemCategory.Setup] = "设置",
+        [ItemCategory.Cash] = "点装",
+        [ItemCategory.Pet] = "宠物",
+        [ItemCategory.Skill] = "技能",
+    };
+
+    private static string BuildCategoryDisplay(ItemEntity? item)
+    {
+        if (item == null) return "";
+
+        var cat = CategoryDisplayNames.GetValueOrDefault(item.Category, item.Category.ToString());
+
+        // 子分类
+        var subCat = SubCategoryDisplayHelper.GetSubCategoryName(item.SubCategory);
+        if (!string.IsNullOrEmpty(subCat))
+            cat += " / " + subCat;
+
+        // 武器细分类型 (根据 ID 前缀)
+        if (item.SubCategory is "Weapon" or "SecondWeapon")
+        {
+            var weaponType = WeaponTypeHelper.GetWeaponTypeName(item.ItemId);
+            if (weaponType != null)
+                cat += " / " + weaponType;
+        }
+
+        // 技能: 显示职业名
+        if (item.Category == ItemCategory.Skill && item.SubCategory is { } sub
+            && sub.StartsWith("job:") && int.TryParse(sub.AsSpan(4), out var jobId))
+        {
+            cat = cat.Replace(subCat!, JobNameHelper.GetJobName(jobId));
+        }
+
+        return cat;
     }
 
     private static string BuildSkillDetailText(SkillEntity skill)
@@ -364,15 +416,18 @@ public partial class MainViewModel : ObservableObject
             SearchText, SelectedCategoryOption.Label);
         StatusText = "正在搜索...";
 
-        if (SelectedCategoryOption.Value == ItemCategory.Skill)
+        var isAllCategory = SelectedCategoryOption.Value == null;
+        var isSkillCategory = SelectedCategoryOption.Value == ItemCategory.Skill;
+
+        if (isSkillCategory || isAllCategory)
         {
-            // 技能搜索
+            // 搜索技能
             IsSkillMode = true;
             var skills = await _repository.SearchSkillsByNameAsync(SearchText ?? "", limit: 0);
             _skillSearchCache = skills.ToDictionary(s => s.SkillId);
 
             // 转换为 ItemEntity 以复用 DataGrid 显示
-            var items = skills.Select(s => new ItemEntity
+            var skillItems = skills.Select(s => new ItemEntity
             {
                 ItemId = s.SkillId,
                 Name = s.Name,
@@ -383,9 +438,27 @@ public partial class MainViewModel : ObservableObject
                 IconData = s.IconData,
             }).ToList();
 
-            SearchResults = new ObservableCollection<ItemEntity>(items);
-            StatusText = $"找到 {skills.Count} 个技能";
-            _logger.LogInformation("技能搜索完成: {Count} 个结果", skills.Count);
+            if (isAllCategory)
+            {
+                // 全部分类: 同时搜索道具
+                var filter = new ItemQueryFilter
+                {
+                    Keyword = SearchText,
+                    Limit = 0,
+                };
+                var itemResults = await _repository.QueryAsync(filter);
+                var combined = itemResults.Concat(skillItems).ToList();
+                SearchResults = new ObservableCollection<ItemEntity>(combined);
+                StatusText = $"找到 {itemResults.Count} 个道具, {skills.Count} 个技能";
+                _logger.LogInformation("全部搜索完成: {ItemCount} 个道具, {SkillCount} 个技能",
+                    itemResults.Count, skills.Count);
+            }
+            else
+            {
+                SearchResults = new ObservableCollection<ItemEntity>(skillItems);
+                StatusText = $"找到 {skills.Count} 个技能";
+                _logger.LogInformation("技能搜索完成: {Count} 个结果", skills.Count);
+            }
         }
         else
         {
@@ -410,7 +483,7 @@ public partial class MainViewModel : ObservableObject
     private void ClearSearch()
     {
         SearchText = "";
-        SearchResults.Clear();
+        SearchResults = [];
         SelectedItem = null;
         SelectedCategoryOption = CategoryOptions[0];
         SelectedSubCategoryOption = EquipSubCategoryOptions[0];
@@ -419,6 +492,43 @@ public partial class MainViewModel : ObservableObject
         SkillDetailText = null;
         _skillSearchCache.Clear();
         StatusText = "就绪";
+    }
+
+    [RelayCommand]
+    private void CopySelectedItemName()
+    {
+        if (SelectedItem != null)
+            SafeSetClipboard(SelectedItem.Name);
+    }
+
+    [RelayCommand]
+    private void CopySelectedItemId()
+    {
+        if (SelectedItem != null)
+            SafeSetClipboard(SelectedItem.ItemId.ToString());
+    }
+
+    [RelayCommand]
+    private void CopySelectedItemSn()
+    {
+        if (SelectedItem?.Sn != null)
+            SafeSetClipboard(SelectedItem.Sn.Value.ToString());
+    }
+
+    private static void SafeSetClipboard(string text)
+    {
+        for (int i = 0; i < 3; i++)
+        {
+            try
+            {
+                System.Windows.Clipboard.SetDataObject(text, true);
+                return;
+            }
+            catch
+            {
+                Thread.Sleep(100);
+            }
+        }
     }
 
     [RelayCommand]

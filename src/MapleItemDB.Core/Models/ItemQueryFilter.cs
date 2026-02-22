@@ -16,6 +16,6 @@ public class ItemQueryFilter
     public int? MinBossDmg { get; set; }
     public int? MinIed { get; set; }
 
-    public int Limit { get; set; } = 50;
+    public int Limit { get; set; } = 0;  // 0 = 不限制
     public int Offset { get; set; } = 0;
 }

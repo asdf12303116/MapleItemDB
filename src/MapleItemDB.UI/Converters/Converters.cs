@@ -233,9 +233,58 @@ public static class JobNameHelper
 }
 
 /// <summary>
-/// WZ 子分类文件夹名 → 中文（冒险岛术语）
+/// 根据武器道具 ID 前缀获取具体武器类型中文名
 /// </summary>
-public class SubCategoryConverter : IValueConverter
+public static class WeaponTypeHelper
+{
+    private static readonly Dictionary<int, string> WeaponTypeNames = new()
+    {
+        [130] = "单手剑",
+        [131] = "单手斧",
+        [132] = "单手钝器",
+        [133] = "短刀",
+        [134] = "双刀",
+        [136] = "手杖",
+        [137] = "短杖",
+        [138] = "长杖",
+        [140] = "双手剑",
+        [141] = "双手斧",
+        [142] = "双手钝器",
+        [143] = "枪",
+        [144] = "矛",
+        [145] = "弓",
+        [146] = "弩",
+        [147] = "拳套",
+        [148] = "指节",
+        [149] = "短枪",
+        [150] = "铲子",
+        [151] = "镐子",
+        [152] = "双弩",
+        [153] = "手炮",
+        [154] = "太刀",
+        [155] = "扇子",
+        [156] = "大剑",
+        [157] = "长剑",
+        [158] = "臂铠",
+        [159] = "远古弓",
+        [160] = "调谐器",
+        [161] = "吐息",
+    };
+
+    /// <summary>
+    /// 根据道具 ID 获取武器类型名，非武器返回 null
+    /// </summary>
+    public static string? GetWeaponTypeName(int itemId)
+    {
+        var prefix = itemId / 10000;
+        return WeaponTypeNames.GetValueOrDefault(prefix);
+    }
+}
+
+/// <summary>
+/// 子分类名称查找 (供 Converter 和 ViewModel 共用)
+/// </summary>
+public static class SubCategoryDisplayHelper
 {
     private static readonly Dictionary<string, string> SubCategoryNames = new(StringComparer.OrdinalIgnoreCase)
     {
@@ -300,11 +349,25 @@ public class SubCategoryConverter : IValueConverter
         ["Special"] = "特殊",
     };
 
+    public static string? GetSubCategoryName(string? subCategory)
+    {
+        if (subCategory != null && SubCategoryNames.TryGetValue(subCategory, out var name))
+            return name;
+        return null;
+    }
+}
+
+/// <summary>
+/// WZ 子分类文件夹名 → 中文（冒险岛术语）
+/// </summary>
+public class SubCategoryConverter : IValueConverter
+{
     public object Convert(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         if (value is string sub)
         {
-            if (SubCategoryNames.TryGetValue(sub, out var name))
+            var name = SubCategoryDisplayHelper.GetSubCategoryName(sub);
+            if (name != null)
                 return name;
             // 支持技能搜索的职业 ID 子分类 (格式: "job:{jobId}")
             if (sub.StartsWith("job:") && int.TryParse(sub.AsSpan(4), out var jobId))
@@ -383,6 +446,23 @@ public class FlagToColorConverter : IValueConverter
     public object ConvertBack(object? value, Type targetType, object? parameter, CultureInfo culture)
     {
         throw new NotSupportedException();
+    }
+}
+
+/// <summary>
+/// 绑定代理 — 让不在可视化树中的元素 (如 DataGridColumn) 能访问 DataContext
+/// </summary>
+public class BindingProxy : Freezable
+{
+    protected override Freezable CreateInstanceCore() => new BindingProxy();
+
+    public static readonly DependencyProperty DataProperty =
+        DependencyProperty.Register("Data", typeof(object), typeof(BindingProxy), new PropertyMetadata(null));
+
+    public object? Data
+    {
+        get => GetValue(DataProperty);
+        set => SetValue(DataProperty, value);
     }
 }
 

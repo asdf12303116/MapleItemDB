@@ -36,6 +36,9 @@ public class DatabaseBootstrapper
         // 安全迁移: dim_skills 新增 skill_h, common_props 列
         await SafeAddColumnAsync(conn, "ALTER TABLE dim_skills ADD COLUMN skill_h TEXT;");
         await SafeAddColumnAsync(conn, "ALTER TABLE dim_skills ADD COLUMN common_props TEXT;");
+
+        // 安全迁移: dim_items 新增 sn 列
+        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN sn INTEGER;");
     }
 
     private static async Task SafeAddColumnAsync(Microsoft.Data.Sqlite.SqliteConnection conn, string sql)

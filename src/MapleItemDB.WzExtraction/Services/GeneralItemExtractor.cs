@@ -29,21 +29,42 @@ public class GeneralItemExtractor
 
         // Item.wz/Consume/ 下按 ID 前缀分组: 0200.img, 0201.img, ...
         // 每个 .img 内包含多个 itemId 节点
+        // 但 Pet/ 下每个 .img 本身就是一个道具: 5000000.img, 5000001.img, ...
         foreach (var imgNode in categoryNode.Nodes)
         {
             if (imgNode.Value is not Wz_Image img)
                 continue;
+
+            var imgName = imgNode.Text;
+            if (!imgName.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+                continue;
+
             if (!img.TryExtract())
                 continue;
 
-            foreach (var idNode in img.Node.Nodes)
+            if (category == ItemCategory.Pet)
             {
-                if (!int.TryParse(idNode.Text, out var itemId))
-                    continue;
+                // Pet: .img 文件名就是 itemId
+                var idStr = imgName[..^4];
+                if (int.TryParse(idStr, out var petId))
+                {
+                    var entity = ParseItemNode(petId, img.Node, category);
+                    if (entity != null)
+                        items.Add(entity);
+                }
+            }
+            else
+            {
+                // 其他分类: .img 内有多个 itemId 子节点
+                foreach (var idNode in img.Node.Nodes)
+                {
+                    if (!int.TryParse(idNode.Text, out var itemId))
+                        continue;
 
-                var entity = ParseItemNode(itemId, idNode, category);
-                if (entity != null)
-                    items.Add(entity);
+                    var entity = ParseItemNode(itemId, idNode, category);
+                    if (entity != null)
+                        items.Add(entity);
+                }
             }
         }
 
