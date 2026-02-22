@@ -11,6 +11,7 @@ public class ItemQueryFilter
     public int? MinLevel { get; set; }
     public int? MaxLevel { get; set; }
     public bool? IsCash { get; set; }
+    public bool? HasSn { get; set; }
 
     // JSON 动态属性筛选
     public int? MinBossDmg { get; set; }

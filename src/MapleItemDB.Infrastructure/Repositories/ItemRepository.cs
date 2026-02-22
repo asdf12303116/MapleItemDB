@@ -73,6 +73,10 @@ public class ItemRepository : IItemRepository
             sb.Append(" AND is_cash = @IsCash");
             parameters.Add("IsCash", filter.IsCash.Value ? 1 : 0);
         }
+        if (filter.HasSn == true)
+        {
+            sb.Append(" AND sn IS NOT NULL");
+        }
         if (filter.MinBossDmg.HasValue)
         {
             sb.Append(" AND JSON_EXTRACT(dynamic_stats, '$.boss_dmg') >= @MinBossDmg");

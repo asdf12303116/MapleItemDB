@@ -23,6 +23,11 @@ public record CategoryOption(string Label, ItemCategory? Value);
 public record SubCategoryOption(string Label, string? Value);
 
 /// <summary>
+/// SN 筛选选项 (ComboBox 绑定用)
+/// </summary>
+public record SnFilterOption(string Label, bool? Value);
+
+/// <summary>
 /// 主窗口 ViewModel
 /// </summary>
 public partial class MainViewModel : ObservableObject
@@ -153,6 +158,18 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isCashSelected;
 
+    /// <summary>
+    /// SN 筛选选项列表
+    /// </summary>
+    public static List<SnFilterOption> SnFilterOptions { get; } =
+    [
+        new("全部", null),
+        new("仅存在SN", true),
+    ];
+
+    [ObservableProperty]
+    private SnFilterOption _selectedSnFilterOption;
+
     public MainViewModel(
         IItemRepository repository,
         IWzExtractor extractor,
@@ -165,6 +182,7 @@ public partial class MainViewModel : ObservableObject
         _logger = logger;
         _selectedCategoryOption = CategoryOptions[0];
         _selectedSubCategoryOption = EquipSubCategoryOptions[0];
+        _selectedSnFilterOption = SnFilterOptions[0];
     }
 
     /// <summary>
@@ -226,13 +244,15 @@ public partial class MainViewModel : ObservableObject
         IsEquipSelected = value.Value == ItemCategory.Equip;
         IsCashSelected = value.Value == ItemCategory.Cash;
         SelectedSubCategoryOption = EquipSubCategoryOptions[0];
+        SelectedSnFilterOption = SnFilterOptions[0];
     }
 
     partial void OnSelectedItemChanged(ItemEntity? value)
     {
         SelectedItemCategoryDisplay = BuildCategoryDisplay(value);
 
-        if (value != null && IsSkillMode && _skillSearchCache.TryGetValue(value.ItemId, out var skill))
+        if (value != null && value.Category == ItemCategory.Skill
+            && _skillSearchCache.TryGetValue(value.ItemId, out var skill))
         {
             SelectedSkill = skill;
             SkillDetailText = BuildSkillDetailText(skill);
@@ -284,7 +304,7 @@ public partial class MainViewModel : ObservableObject
         if (item.Category == ItemCategory.Skill && item.SubCategory is { } sub
             && sub.StartsWith("job:") && int.TryParse(sub.AsSpan(4), out var jobId))
         {
-            cat = cat.Replace(subCat!, JobNameHelper.GetJobName(jobId));
+            cat += " / " + JobNameHelper.GetJobName(jobId);
         }
 
         return cat;
@@ -470,6 +490,7 @@ public partial class MainViewModel : ObservableObject
                 Keyword = SearchText,
                 Category = SelectedCategoryOption.Value,
                 SubCategory = SelectedSubCategoryOption?.Value,
+                HasSn = SelectedSnFilterOption?.Value,
                 Limit = 0,
             };
             var results = await _repository.QueryAsync(filter);
@@ -487,6 +508,7 @@ public partial class MainViewModel : ObservableObject
         SelectedItem = null;
         SelectedCategoryOption = CategoryOptions[0];
         SelectedSubCategoryOption = EquipSubCategoryOptions[0];
+        SelectedSnFilterOption = SnFilterOptions[0];
         IsSkillMode = false;
         SelectedSkill = null;
         SkillDetailText = null;

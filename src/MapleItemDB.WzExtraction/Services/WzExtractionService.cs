@@ -310,20 +310,41 @@ public class WzExtractionService : IWzExtractor, IDisposable
                     if (!img.TryExtract())
                         continue;
 
-                    foreach (var idNode in img.Node.Nodes)
+                    if (catName == "Pet")
                     {
-                        if (!int.TryParse(idNode.Text, out var itemId))
-                            continue;
-                        if (!itemDict.TryGetValue(itemId, out var item))
-                            continue;
+                        // Pet: .img 文件名本身就是 itemId (如 5000000.img)
+                        var petIdStr = imgFileNode.Text;
+                        if (petIdStr.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+                            petIdStr = petIdStr[..^4];
+                        if (int.TryParse(petIdStr, out var petId) && itemDict.TryGetValue(petId, out var petItem))
+                        {
+                            var iconData = exporter.ExportFromItem(img.Node, petId);
+                            if (iconData != null)
+                                petItem.IconData = iconData;
 
-                        var iconData = exporter.ExportFromItem(idNode, itemId);
-                        if (iconData != null)
-                            item.IconData = iconData;
+                            exported++;
+                            if (exported % 500 == 0)
+                                progress?.Report(new ExtractionProgress("导出图标", exported, total, $"已导出 {exported}/{total}"));
+                        }
+                    }
+                    else
+                    {
+                        // 其他分类: .img 内有多个 itemId 子节点
+                        foreach (var idNode in img.Node.Nodes)
+                        {
+                            if (!int.TryParse(idNode.Text, out var itemId))
+                                continue;
+                            if (!itemDict.TryGetValue(itemId, out var item))
+                                continue;
 
-                        exported++;
-                        if (exported % 500 == 0)
-                            progress?.Report(new ExtractionProgress("导出图标", exported, total, $"已导出 {exported}/{total}"));
+                            var iconData = exporter.ExportFromItem(idNode, itemId);
+                            if (iconData != null)
+                                item.IconData = iconData;
+
+                            exported++;
+                            if (exported % 500 == 0)
+                                progress?.Report(new ExtractionProgress("导出图标", exported, total, $"已导出 {exported}/{total}"));
+                        }
                     }
                 }
             }

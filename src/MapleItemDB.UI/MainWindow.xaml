@@ -59,6 +59,16 @@
                       Margin="0,0,8,0"
                       Visibility="{Binding IsEquipSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
+            <!-- 现金 SN 筛选下拉框 -->
+            <ComboBox Grid.Column="1"
+                      ItemsSource="{Binding SnFilterOptions}"
+                      SelectedItem="{Binding SelectedSnFilterOption}"
+                      DisplayMemberPath="Label"
+                      Width="100"
+                      VerticalContentAlignment="Center"
+                      Margin="0,0,8,0"
+                      Visibility="{Binding IsCashSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+
             <TextBox Grid.Column="2"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                      VerticalContentAlignment="Center"
@@ -96,6 +106,7 @@
                       Grid.Column="0"
                       ItemsSource="{Binding SearchResults}"
                       SelectedItem="{Binding SelectedItem}"
+                      SelectionChanged="OnSearchResultSelectionChanged"
                       AutoGenerateColumns="False"
                       IsReadOnly="True"
                       SelectionMode="Single"

@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Media;
+using MapleItemDB.Core.Models;
 using MapleItemDB.UI.ViewModels;
 using Microsoft.Win32;
 
@@ -27,6 +28,12 @@ public partial class MainWindow : Window
                 scrollViewer?.ScrollToTop();
             }, System.Windows.Threading.DispatcherPriority.Loaded);
         }
+    }
+
+    private void OnSearchResultSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (DataContext is MainViewModel vm)
+            vm.SelectedItem = SearchResultsGrid.SelectedItem as ItemEntity;
     }
 
     private static T? FindVisualChild<T>(DependencyObject parent) where T : DependencyObject
