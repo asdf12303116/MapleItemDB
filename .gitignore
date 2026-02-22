@@ -1,0 +1,33 @@
+## .NET
+bin/
+obj/
+*.user
+*.suo
+*.cache
+*.vs/
+
+## SQLite 数据库
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+*.sqlite
+
+## 图标缓存
+Cache/Icons/
+
+## IDE
+.idea/
+.vscode/
+*.DotSettings.user
+
+## Claude
+.claude/
+
+## 嵌入仓库
+demo/WzComparerR2-Plus/
+
+## 工作文档
+PLAN.md
+gemini-output.md
+i18n.txt

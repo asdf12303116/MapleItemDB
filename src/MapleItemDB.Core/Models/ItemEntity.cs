@@ -1,0 +1,66 @@
+namespace MapleItemDB.Core.Models;
+
+/// <summary>
+/// 道具主实体，映射 dim_items 表
+/// </summary>
+public class ItemEntity
+{
+    /// <summary>道具 ID</summary>
+    public int ItemId { get; set; }
+
+    /// <summary>道具名称 (已解析宏变量)</summary>
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>道具描述</summary>
+    public string? Description { get; set; }
+
+    /// <summary>分类: Equip/Consume/Etc/Setup/Cash/Pet</summary>
+    public ItemCategory Category { get; set; }
+
+    /// <summary>子分类: Weapon/Cap/Coat 等</summary>
+    public string? SubCategory { get; set; }
+
+    // ---- 装备需求属性 ----
+    public int? ReqLevel { get; set; }
+    public int? ReqStr { get; set; }
+    public int? ReqDex { get; set; }
+    public int? ReqInt { get; set; }
+    public int? ReqLuk { get; set; }
+
+    // ---- 装备核心数值 ----
+    public int? IncSTR { get; set; }
+    public int? IncDEX { get; set; }
+    public int? IncINT { get; set; }
+    public int? IncLUK { get; set; }
+    public int? IncPAD { get; set; } // 攻击力
+    public int? IncMAD { get; set; } // 魔攻
+    public int? IncPDD { get; set; } // 物防
+    public int? IncMDD { get; set; } // 魔防
+    public int? IncMHP { get; set; } // HP
+    public int? IncMMP { get; set; } // MP
+
+    /// <summary>动态/非结构化属性 (JSON 存储)，如 boss_dmg, ied 等</summary>
+    public string? DynamicStats { get; set; }
+
+    /// <summary>消耗品属性 (JSON 存储)，如 hp/mp回复, buff效果等</summary>
+    public string? ConsumeSpec { get; set; }
+
+    // ---- 元数据 ----
+    /// <summary>是否商城道具</summary>
+    public bool IsCash { get; set; }
+
+    /// <summary>NPC 售价</summary>
+    public int? Price { get; set; }
+
+    /// <summary>本地图标缓存路径</summary>
+    public string? IconPath { get; set; }
+
+    /// <summary>外观装备预览图路径</summary>
+    public string? PreviewPath { get; set; }
+
+    /// <summary>套装 ID</summary>
+    public int? SetItemId { get; set; }
+
+    /// <summary>提取时间戳</summary>
+    public DateTime ExtractedAt { get; set; }
+}

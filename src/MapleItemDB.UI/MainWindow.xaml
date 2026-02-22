@@ -1,0 +1,192 @@
+<Window x:Class="MapleItemDB.UI.MainWindow"
+        xmlns="http://schemas.microsoft.com/winfx/2006/xaml/presentation"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="clr-namespace:MapleItemDB.UI.ViewModels"
+        xmlns:converters="clr-namespace:MapleItemDB.UI.Converters"
+        mc:Ignorable="d"
+        Title="MapleItemDB - 道具数据库" Height="700" Width="1100"
+        WindowStartupLocation="CenterScreen"
+        d:DataContext="{d:DesignInstance vm:MainViewModel}">
+
+    <Window.Resources>
+        <BooleanToVisibilityConverter x:Key="BoolToVisibilityConverter"/>
+        <converters:NullToCollapsedConverter x:Key="NullToCollapsedConverter"/>
+        <converters:InvertBoolConverter x:Key="InvertBoolConverter"/>
+        <converters:ItemCategoryConverter x:Key="CategoryConverter"/>
+        <converters:SubCategoryConverter x:Key="SubCategoryConverter"/>
+    </Window.Resources>
+
+    <Grid Margin="8">
+        <Grid.RowDefinitions>
+            <RowDefinition Height="Auto"/>
+            <RowDefinition Height="*"/>
+            <RowDefinition Height="Auto"/>
+        </Grid.RowDefinitions>
+
+        <!-- 顶部工具栏: 搜索 + 提取按钮 -->
+        <Grid Grid.Row="0" Margin="0,0,0,8">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBox Grid.Column="0"
+                     Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
+                     VerticalContentAlignment="Center"
+                     Padding="6,4"
+                     FontSize="14">
+                <TextBox.InputBindings>
+                    <KeyBinding Key="Enter" Command="{Binding SearchCommand}"/>
+                </TextBox.InputBindings>
+            </TextBox>
+
+            <Button Grid.Column="1"
+                    Content="搜索"
+                    Margin="8,0,0,0"
+                    Padding="16,6"
+                    Command="{Binding SearchCommand}"/>
+
+            <Button Grid.Column="2"
+                    Content="提取 WZ 数据"
+                    Margin="8,0,0,0"
+                    Padding="16,6"
+                    Click="OnExtractClick"
+                    IsEnabled="{Binding IsExtracting, Converter={StaticResource InvertBoolConverter}}"/>
+        </Grid>
+
+        <!-- 中间主区域: 左侧列表 + 右侧详情 -->
+        <Grid Grid.Row="1">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="2*"/>
+                <ColumnDefinition Width="3*"/>
+            </Grid.ColumnDefinitions>
+
+            <!-- 搜索结果列表 -->
+            <DataGrid Grid.Column="0"
+                      ItemsSource="{Binding SearchResults}"
+                      SelectedItem="{Binding SelectedItem}"
+                      AutoGenerateColumns="False"
+                      IsReadOnly="True"
+                      SelectionMode="Single"
+                      Margin="0,0,4,0"
+                      GridLinesVisibility="Horizontal"
+                      HeadersVisibility="Column">
+                <DataGrid.Columns>
+                    <DataGridTextColumn Header="ID" Binding="{Binding ItemId}" Width="80"/>
+                    <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="*"/>
+                    <DataGridTextColumn Header="分类" Binding="{Binding Category, Converter={StaticResource CategoryConverter}}" Width="50"/>
+                    <DataGridTextColumn Header="子分类" Binding="{Binding SubCategory, Converter={StaticResource SubCategoryConverter}}" Width="60"/>
+                    <DataGridTextColumn Header="等级" Binding="{Binding ReqLevel}" Width="45"/>
+                </DataGrid.Columns>
+            </DataGrid>
+
+            <!-- 道具详情面板 -->
+            <ScrollViewer Grid.Column="1" Margin="4,0,0,0" VerticalScrollBarVisibility="Auto">
+                <StackPanel>
+                    <TextBlock Text="道具详情" FontSize="16" FontWeight="Bold" Margin="0,0,0,8"/>
+
+                    <!-- 基础信息 -->
+                    <Border BorderBrush="#DDD" BorderThickness="1" Padding="12" CornerRadius="4" Margin="0,0,0,8"
+                            DataContext="{Binding SelectedItem}">
+                        <Grid>
+                            <Grid.ColumnDefinitions>
+                                <ColumnDefinition Width="Auto"/>
+                                <ColumnDefinition Width="*"/>
+                            </Grid.ColumnDefinitions>
+
+                            <!-- 图标 -->
+                            <Border Grid.Column="0"
+                                    Width="64" Height="64"
+                                    Background="#F0F0F0"
+                                    Margin="0,0,12,0"
+                                    CornerRadius="4">
+                                <Image Source="{Binding IconPath}"
+                                       Width="48" Height="48"
+                                       RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                            </Border>
+
+                            <!-- 名称和分类 -->
+                            <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                                <TextBlock Text="{Binding Name}" FontSize="18" FontWeight="Bold"/>
+                                <TextBlock Margin="0,4,0,0">
+                                    <Run Text="ID: "/><Run Text="{Binding ItemId, Mode=OneWay}"/>
+                                    <Run Text=" | "/>
+                                    <InlineUIContainer BaselineAlignment="TextBottom">
+                                        <TextBlock Text="{Binding Category, Converter={StaticResource CategoryConverter}}"/>
+                                    </InlineUIContainer>
+                                    <Run Text=" / "/>
+                                    <InlineUIContainer BaselineAlignment="TextBottom">
+                                        <TextBlock Text="{Binding SubCategory, Converter={StaticResource SubCategoryConverter}}"/>
+                                    </InlineUIContainer>
+                                </TextBlock>
+                                <TextBlock Text="{Binding Description}"
+                                           Foreground="Gray"
+                                           TextWrapping="Wrap"
+                                           Margin="0,4,0,0"/>
+                            </StackPanel>
+                        </Grid>
+                    </Border>
+
+                    <!-- 预览图 (外观装备) -->
+                    <Border BorderBrush="#DDD" BorderThickness="1" Padding="12" CornerRadius="4" Margin="0,0,0,8"
+                            Visibility="{Binding SelectedItem.PreviewPath, Converter={StaticResource NullToCollapsedConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="预览" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <Image Source="{Binding SelectedItem.PreviewPath}"
+                                   MaxHeight="200"
+                                   HorizontalAlignment="Left"
+                                   RenderOptions.BitmapScalingMode="NearestNeighbor"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 装备属性 -->
+                    <Border BorderBrush="#DDD" BorderThickness="1" Padding="12" CornerRadius="4" Margin="0,0,0,8">
+                        <StackPanel>
+                            <TextBlock Text="属性" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <ItemsControl ItemsSource="{Binding FormattedStats}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" Margin="0,2" FontSize="13"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- 套装效果 -->
+                    <Border BorderBrush="#DDD" BorderThickness="1" Padding="12" CornerRadius="4" Margin="0,0,0,8"
+                            Visibility="{Binding HasSetItem, Converter={StaticResource BoolToVisibilityConverter}}">
+                        <StackPanel>
+                            <TextBlock Text="套装效果" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                            <TextBlock Text="{Binding SetItemDisplayText}"
+                                       TextWrapping="Wrap"
+                                       FontSize="13"
+                                       LineHeight="22"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
+        </Grid>
+
+        <!-- 底部状态栏 -->
+        <Grid Grid.Row="2" Margin="0,8,0,0">
+            <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
+            </Grid.ColumnDefinitions>
+
+            <TextBlock Grid.Column="0"
+                       Text="{Binding StatusText}"
+                       VerticalAlignment="Center"/>
+
+            <ProgressBar Grid.Column="1"
+                         Width="200" Height="16"
+                         Value="{Binding ExtractionProgress}"
+                         Visibility="{Binding IsExtracting, Converter={StaticResource BoolToVisibilityConverter}}"
+                         Margin="8,0,0,0"/>
+        </Grid>
+    </Grid>
+</Window>

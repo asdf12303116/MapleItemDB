@@ -1,0 +1,60 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.0.31903.59
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "src", "src", "{7A1700D3-356B-47AD-8E8C-1BC8B66EF46E}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleItemDB.Core", "src\MapleItemDB.Core\MapleItemDB.Core.csproj", "{5550833B-6E2F-4C02-B783-706E7EC28655}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleItemDB.WzExtraction", "src\MapleItemDB.WzExtraction\MapleItemDB.WzExtraction.csproj", "{8B439BA2-DCD5-4544-9AE5-54E374E730F7}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleItemDB.Infrastructure", "src\MapleItemDB.Infrastructure\MapleItemDB.Infrastructure.csproj", "{7FE8C44E-A667-4A06-8DBD-D28CB9C18ECD}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "MapleItemDB.UI", "src\MapleItemDB.UI\MapleItemDB.UI.csproj", "{07426D80-E7EC-4238-972B-85AD88A3879C}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "lib", "lib", "{31441AFD-E247-4805-93FB-A04C58FB0874}"
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "WzComparerR2", "WzComparerR2", "{5BFB77F2-44E4-4D45-BD09-0E140356FD91}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "WzComparerR2.WzLib", "lib\WzComparerR2\WzComparerR2.WzLib\WzComparerR2.WzLib.csproj", "{107AD684-13C0-4C0F-AD1C-17B5B300DD49}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{5550833B-6E2F-4C02-B783-706E7EC28655}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{5550833B-6E2F-4C02-B783-706E7EC28655}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{5550833B-6E2F-4C02-B783-706E7EC28655}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{5550833B-6E2F-4C02-B783-706E7EC28655}.Release|Any CPU.Build.0 = Release|Any CPU
+		{8B439BA2-DCD5-4544-9AE5-54E374E730F7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{8B439BA2-DCD5-4544-9AE5-54E374E730F7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{8B439BA2-DCD5-4544-9AE5-54E374E730F7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{8B439BA2-DCD5-4544-9AE5-54E374E730F7}.Release|Any CPU.Build.0 = Release|Any CPU
+		{7FE8C44E-A667-4A06-8DBD-D28CB9C18ECD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{7FE8C44E-A667-4A06-8DBD-D28CB9C18ECD}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{7FE8C44E-A667-4A06-8DBD-D28CB9C18ECD}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{7FE8C44E-A667-4A06-8DBD-D28CB9C18ECD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{07426D80-E7EC-4238-972B-85AD88A3879C}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{07426D80-E7EC-4238-972B-85AD88A3879C}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{07426D80-E7EC-4238-972B-85AD88A3879C}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{07426D80-E7EC-4238-972B-85AD88A3879C}.Release|Any CPU.Build.0 = Release|Any CPU
+		{107AD684-13C0-4C0F-AD1C-17B5B300DD49}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{107AD684-13C0-4C0F-AD1C-17B5B300DD49}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{107AD684-13C0-4C0F-AD1C-17B5B300DD49}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{107AD684-13C0-4C0F-AD1C-17B5B300DD49}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(NestedProjects) = preSolution
+		{5550833B-6E2F-4C02-B783-706E7EC28655} = {7A1700D3-356B-47AD-8E8C-1BC8B66EF46E}
+		{8B439BA2-DCD5-4544-9AE5-54E374E730F7} = {7A1700D3-356B-47AD-8E8C-1BC8B66EF46E}
+		{7FE8C44E-A667-4A06-8DBD-D28CB9C18ECD} = {7A1700D3-356B-47AD-8E8C-1BC8B66EF46E}
+		{07426D80-E7EC-4238-972B-85AD88A3879C} = {7A1700D3-356B-47AD-8E8C-1BC8B66EF46E}
+		{5BFB77F2-44E4-4D45-BD09-0E140356FD91} = {31441AFD-E247-4805-93FB-A04C58FB0874}
+		{107AD684-13C0-4C0F-AD1C-17B5B300DD49} = {5BFB77F2-44E4-4D45-BD09-0E140356FD91}
+	EndGlobalSection
+EndGlobal

@@ -1,0 +1,3 @@
+[submodule "lib/WzComparerR2"]
+	path = lib/WzComparerR2
+	url = https://github.com/Kagamia/WzComparerR2.git
