@@ -84,9 +84,12 @@ public class ItemRepository : IItemRepository
             parameters.Add("MinIed", filter.MinIed.Value);
         }
 
-        sb.Append(" LIMIT @Limit OFFSET @Offset");
-        parameters.Add("Limit", filter.Limit);
-        parameters.Add("Offset", filter.Offset);
+        if (filter.Limit > 0)
+        {
+            sb.Append(" LIMIT @Limit OFFSET @Offset");
+            parameters.Add("Limit", filter.Limit);
+            parameters.Add("Offset", filter.Offset);
+        }
 
         using var conn = _connectionFactory.Create();
         var rows = await conn.QueryAsync<ItemRow>(sb.ToString(), parameters);
@@ -198,16 +201,17 @@ public class ItemRepository : IItemRepository
         const string sql = """
             INSERT INTO dim_skills (
                 skill_id, name, description, job_id, max_level,
-                icon_data, is_hidden, level_effects, extracted_at
+                icon_data, is_hidden, level_effects, skill_h, common_props, extracted_at
             ) VALUES (
                 @skill_id, @name, @description, @job_id, @max_level,
-                @icon_data, @is_hidden, @level_effects, @extracted_at
+                @icon_data, @is_hidden, @level_effects, @skill_h, @common_props, @extracted_at
             )
             ON CONFLICT(skill_id) DO UPDATE SET
                 name=excluded.name, description=excluded.description,
                 job_id=excluded.job_id, max_level=excluded.max_level,
                 icon_data=excluded.icon_data, is_hidden=excluded.is_hidden,
                 level_effects=excluded.level_effects,
+                skill_h=excluded.skill_h, common_props=excluded.common_props,
                 extracted_at=excluded.extracted_at
             """;
 
@@ -225,9 +229,22 @@ public class ItemRepository : IItemRepository
 
     public async Task<IReadOnlyList<SkillEntity>> SearchSkillsByNameAsync(string keyword, int limit = 50)
     {
-        const string sql = "SELECT * FROM dim_skills WHERE name LIKE @Keyword LIMIT @Limit";
         using var conn = _connectionFactory.Create();
-        var rows = await conn.QueryAsync<SkillRow>(sql, new { Keyword = $"%{keyword}%", Limit = limit });
+        IEnumerable<SkillRow> rows;
+        if (string.IsNullOrWhiteSpace(keyword))
+        {
+            var sql = limit > 0
+                ? "SELECT * FROM dim_skills WHERE is_hidden = 0 LIMIT @Limit"
+                : "SELECT * FROM dim_skills WHERE is_hidden = 0";
+            rows = await conn.QueryAsync<SkillRow>(sql, new { Limit = limit });
+        }
+        else
+        {
+            var sql = limit > 0
+                ? "SELECT * FROM dim_skills WHERE name LIKE @Keyword LIMIT @Limit"
+                : "SELECT * FROM dim_skills WHERE name LIKE @Keyword";
+            rows = await conn.QueryAsync<SkillRow>(sql, new { Keyword = $"%{keyword}%", Limit = limit });
+        }
         return rows.Select(r => r.ToEntity()).ToList();
     }
 
@@ -343,6 +360,8 @@ public class ItemRepository : IItemRepository
         public byte[]? icon_data { get; set; }
         public int is_hidden { get; set; }
         public string? level_effects { get; set; }
+        public string? skill_h { get; set; }
+        public string? common_props { get; set; }
         public string extracted_at { get; set; } = "";
 
         public SkillEntity ToEntity() => new()
@@ -355,6 +374,8 @@ public class ItemRepository : IItemRepository
             IconData = icon_data,
             IsHidden = is_hidden != 0,
             LevelEffectsJson = level_effects,
+            SkillH = skill_h,
+            CommonPropsJson = common_props,
             ExtractedAt = DateTime.TryParse(extracted_at, out var dt) ? dt : DateTime.MinValue,
         };
 
@@ -368,6 +389,8 @@ public class ItemRepository : IItemRepository
             icon_data = e.IconData,
             is_hidden = e.IsHidden ? 1 : 0,
             level_effects = e.LevelEffectsJson,
+            skill_h = e.SkillH,
+            common_props = e.CommonPropsJson,
             extracted_at = e.ExtractedAt.ToString("O"),
         };
     }

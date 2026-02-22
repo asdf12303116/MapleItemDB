@@ -29,6 +29,12 @@ public class SkillEntity
     /// <summary>各等级效果 JSON</summary>
     public string? LevelEffectsJson { get; set; }
 
+    /// <summary>技能等级效果描述模板 (来自 String.wz 的 h 字段)</summary>
+    public string? SkillH { get; set; }
+
+    /// <summary>common 属性公式字典 JSON (如 {"mastery":"55+u(x/2)","bdR":"x+10"})</summary>
+    public string? CommonPropsJson { get; set; }
+
     /// <summary>提取时间戳</summary>
     public DateTime ExtractedAt { get; set; }
 }

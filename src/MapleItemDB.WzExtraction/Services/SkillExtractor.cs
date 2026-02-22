@@ -83,24 +83,29 @@ public class SkillExtractor
                 if (!_stringPool.TryGetValue(skillId, out var entry) || string.IsNullOrEmpty(entry.Name))
                     continue;
 
-                var maxLevel = skillIdNode.GetIntValue("maxLevel") ?? 0;
+                // 优先从 common 子节点读取 maxLevel
+                var commonNode = skillIdNode.Nodes["common"];
+                var maxLevel = commonNode?.GetIntValue("maxLevel")
+                    ?? skillIdNode.GetIntValue("maxLevel")
+                    ?? 0;
                 var invisible = skillIdNode.GetBoolValue("invisible");
 
                 // 提取图标
                 byte[]? iconData = null;
                 var iconNode = skillIdNode.Nodes["icon"];
                 if (iconNode != null)
-                {
                     iconData = ExportPngNode(iconNode);
-                }
 
-                // 提取各等级效果
+                // 提取 common 属性公式 (字符串形式, 用于 Calculator 计算)
+                string? commonPropsJson = null;
+                if (commonNode != null)
+                    commonPropsJson = ExtractCommonProps(commonNode);
+
+                // 提取各等级效果 (采样: 用于无 common 的 pre-BB 技能)
                 string? levelEffectsJson = null;
                 var levelNode = skillIdNode.Nodes["level"];
                 if (levelNode != null)
-                {
                     levelEffectsJson = ExtractLevelEffects(levelNode, maxLevel);
-                }
 
                 result.Add(new SkillEntity
                 {
@@ -112,6 +117,8 @@ public class SkillExtractor
                     IconData = iconData,
                     IsHidden = invisible,
                     LevelEffectsJson = levelEffectsJson,
+                    SkillH = entry.SkillH,
+                    CommonPropsJson = commonPropsJson,
                     ExtractedAt = now,
                 });
             }
@@ -122,6 +129,21 @@ public class SkillExtractor
         }
 
         return result;
+    }
+
+    /// <summary>
+    /// 提取 common 子节点中的属性公式 (保留字符串形式供 Calculator 求值)
+    /// </summary>
+    private static string? ExtractCommonProps(Wz_Node commonNode)
+    {
+        var props = new Dictionary<string, string>();
+        foreach (var propNode in commonNode.Nodes)
+        {
+            var val = propNode.Value;
+            if (val != null)
+                props[propNode.Text] = val.ToString()!;
+        }
+        return props.Count > 0 ? JsonSerializer.Serialize(props) : null;
     }
 
     /// <summary>

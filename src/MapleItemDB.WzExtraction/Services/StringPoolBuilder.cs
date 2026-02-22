@@ -7,8 +7,8 @@ namespace MapleItemDB.WzExtraction.Services;
 /// </summary>
 public class StringPoolBuilder
 {
-    /// <summary>字符串条目 (名称 + 描述)</summary>
-    public record StringEntry(string? Name, string? Description);
+    /// <summary>字符串条目 (名称 + 描述 + 技能等级效果模板)</summary>
+    public record StringEntry(string? Name, string? Description, string? SkillH = null);
 
     private readonly Dictionary<int, StringEntry> _pool = new();
 
@@ -90,15 +90,13 @@ public class StringPoolBuilder
         {
             if (int.TryParse(idNode.Text, out var skillId))
             {
-                // 技能名优先 bookName (技能书名)，然后 name
                 string? name = null;
                 var nameNode = idNode.Nodes["name"];
                 if (nameNode != null)
                     name = nameNode.Value?.ToString();
 
-                var bookNameNode = idNode.Nodes["bookName"];
-                // bookName 作为备用描述，name 仍为主名称
                 string? desc = null;
+                var bookNameNode = idNode.Nodes["bookName"];
                 if (bookNameNode != null)
                     desc = bookNameNode.Value?.ToString();
 
@@ -106,8 +104,30 @@ public class StringPoolBuilder
                 if (descNode != null)
                     desc = descNode.Value?.ToString();
 
+                // 读取技能等级效果模板 (h)
+                string? skillH = null;
+                var hNode = idNode.Nodes["h"];
+                if (hNode != null)
+                    skillH = hNode.Value?.ToString();
+
+                // 如果没有 h，尝试 h1, h2... 拼接
+                if (skillH == null)
+                {
+                    var parts = new List<string>();
+                    for (int i = 1; ; i++)
+                    {
+                        var hiNode = idNode.Nodes["h" + i];
+                        if (hiNode?.Value?.ToString() is string hi && !string.IsNullOrEmpty(hi))
+                            parts.Add(hi);
+                        else
+                            break;
+                    }
+                    if (parts.Count > 0)
+                        skillH = string.Join("\n", parts);
+                }
+
                 if (name != null)
-                    _pool[skillId] = new StringEntry(name, desc);
+                    _pool[skillId] = new StringEntry(name, desc, skillH);
             }
         }
     }

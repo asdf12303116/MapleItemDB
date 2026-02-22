@@ -32,6 +32,10 @@ public class DatabaseBootstrapper
         // 安全迁移: icon_path/preview_path → icon_data/preview_data (BLOB)
         await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN icon_data BLOB;");
         await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN preview_data BLOB;");
+
+        // 安全迁移: dim_skills 新增 skill_h, common_props 列
+        await SafeAddColumnAsync(conn, "ALTER TABLE dim_skills ADD COLUMN skill_h TEXT;");
+        await SafeAddColumnAsync(conn, "ALTER TABLE dim_skills ADD COLUMN common_props TEXT;");
     }
 
     private static async Task SafeAddColumnAsync(Microsoft.Data.Sqlite.SqliteConnection conn, string sql)
@@ -108,6 +112,8 @@ public class DatabaseBootstrapper
             icon_data      BLOB,
             is_hidden      INTEGER DEFAULT 0,
             level_effects  TEXT,
+            skill_h        TEXT,
+            common_props   TEXT,
             extracted_at   TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_skills_name ON dim_skills(name);

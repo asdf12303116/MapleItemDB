@@ -28,13 +28,12 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 顶部工具栏: 分类筛选 + 子分类筛选 + 搜索 + 清除 + 提取按钮 -->
+        <!-- 顶部工具栏: 分类筛选 + 子分类筛选 + 搜索 + 清除 -->
         <Grid Grid.Row="0" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
-                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
@@ -81,13 +80,6 @@
                     Padding="8,6"
                     ToolTip="清除搜索"
                     Command="{Binding ClearSearchCommand}"/>
-
-            <Button Grid.Column="5"
-                    Content="提取 WZ 数据"
-                    Margin="8,0,0,0"
-                    Padding="16,6"
-                    Click="OnExtractClick"
-                    IsEnabled="{Binding IsExtracting, Converter={StaticResource InvertBoolConverter}}"/>
         </Grid>
 
         <!-- 中间主区域: 左侧列表 + 右侧详情 -->
@@ -123,7 +115,8 @@
 
                     <!-- 基础信息 -->
                     <Border BorderBrush="#DDD" BorderThickness="1" Padding="12" CornerRadius="4" Margin="0,0,0,8"
-                            DataContext="{Binding SelectedItem}">
+                            DataContext="{Binding SelectedItem}"
+                            Visibility="{Binding DataContext.SelectedItem, RelativeSource={RelativeSource AncestorType=Window}, Converter={StaticResource NullToCollapsedConverter}}">
                         <Grid>
                             <Grid.ColumnDefinitions>
                                 <ColumnDefinition Width="Auto"/>
@@ -176,7 +169,8 @@
                     </Border>
 
                     <!-- 装备属性 -->
-                    <Border BorderBrush="#DDD" BorderThickness="1" Padding="12" CornerRadius="4" Margin="0,0,0,8">
+                    <Border BorderBrush="#DDD" BorderThickness="1" Padding="12" CornerRadius="4" Margin="0,0,0,8"
+                            Visibility="{Binding HasFormattedStats, Converter={StaticResource BoolToVisibilityConverter}}">
                         <StackPanel>
                             <TextBlock Text="属性" FontWeight="SemiBold" Margin="0,0,0,8"/>
                             <ItemsControl ItemsSource="{Binding FormattedStats}">
@@ -206,14 +200,13 @@
 
                     <!-- 技能详情 (技能搜索模式) -->
                     <Border BorderBrush="#DDD" BorderThickness="1" Padding="12" CornerRadius="4" Margin="0,0,0,8"
-                            Visibility="{Binding IsSkillMode, Converter={StaticResource BoolToVisibilityConverter}}">
+                            Visibility="{Binding SkillDetailText, Converter={StaticResource NullToCollapsedConverter}}">
                         <StackPanel>
                             <TextBlock Text="技能详情" FontWeight="SemiBold" Margin="0,0,0,8"/>
-                            <TextBlock Text="{Binding SkillDetailText}"
+                            <TextBlock converters:MapleTextHelper.MapleText="{Binding SkillDetailText}"
                                        TextWrapping="Wrap"
                                        FontSize="13"
-                                       LineHeight="20"
-                                       FontFamily="Consolas"/>
+                                       LineHeight="20"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -224,6 +217,7 @@
         <Grid Grid.Row="2" Margin="0,8,0,0">
             <Grid.ColumnDefinitions>
                 <ColumnDefinition Width="*"/>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
             </Grid.ColumnDefinitions>
@@ -253,6 +247,14 @@
                        Visibility="{Binding IsExtracting, Converter={StaticResource BoolToVisibilityConverter}}"
                        Margin="4,0,0,0"
                        MinWidth="36"/>
+
+            <!-- 更新数据按钮 (右下角) -->
+            <Button Grid.Column="3"
+                    Content="更新数据"
+                    Margin="8,0,0,0"
+                    Padding="12,4"
+                    Click="OnExtractClick"
+                    IsEnabled="{Binding IsExtracting, Converter={StaticResource InvertBoolConverter}}"/>
         </Grid>
     </Grid>
 </Window>

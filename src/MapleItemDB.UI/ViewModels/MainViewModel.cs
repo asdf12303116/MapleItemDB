@@ -1,11 +1,13 @@
 using System.Collections.ObjectModel;
 using System.Text;
 using System.Text.Json;
+using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
 using MapleItemDB.Infrastructure.Cache;
+using MapleItemDB.UI.Converters;
 using Microsoft.Extensions.Logging;
 
 namespace MapleItemDB.UI.ViewModels;
@@ -61,6 +63,12 @@ public partial class MainViewModel : ObservableObject
     /// </summary>
     [ObservableProperty]
     private List<StatsLine> _formattedStats = [];
+
+    /// <summary>
+    /// 是否有属性需要显示
+    /// </summary>
+    [ObservableProperty]
+    private bool _hasFormattedStats;
 
     /// <summary>
     /// 套装效果文本
@@ -217,6 +225,7 @@ public partial class MainViewModel : ObservableObject
             SelectedSkill = skill;
             SkillDetailText = BuildSkillDetailText(skill);
             FormattedStats = [];
+            HasFormattedStats = false;
             HasSetItem = false;
             SetItemDisplayText = null;
             return;
@@ -225,48 +234,48 @@ public partial class MainViewModel : ObservableObject
         SelectedSkill = null;
         SkillDetailText = null;
         FormattedStats = value != null ? StatsDisplayHelper.FormatStats(value) : [];
+        HasFormattedStats = FormattedStats.Count > 0;
         UpdateSetItemDisplay(value);
     }
 
     private static string BuildSkillDetailText(SkillEntity skill)
     {
         var sb = new StringBuilder();
-        sb.AppendLine($"技能ID: {skill.SkillId}");
-        sb.AppendLine($"职业ID: {skill.JobId}");
-        sb.AppendLine($"最大等级: {skill.MaxLevel}");
+        sb.AppendLine($"[{JobNameHelper.GetJobName(skill.JobId)}] {skill.Name}");
         if (skill.IsHidden)
             sb.AppendLine("(隐藏技能)");
+
+        // 解析 common 公式字典
+        var commonProps = ParseCommonProps(skill.CommonPropsJson);
+
+        // 描述文本: 使用 SummaryParser 风格替换占位符
         if (!string.IsNullOrEmpty(skill.Description))
         {
             sb.AppendLine();
-            sb.AppendLine(skill.Description);
+            var desc = SkillSummaryParser.Resolve(skill.Description, skill.MaxLevel, commonProps);
+            sb.Append(desc);
         }
-        if (!string.IsNullOrEmpty(skill.LevelEffectsJson))
+
+        // 等级效果描述 (h 模板)
+        if (!string.IsNullOrEmpty(skill.SkillH) && skill.MaxLevel > 0)
         {
             sb.AppendLine();
-            sb.AppendLine("── 等级效果 ──");
-            try
-            {
-                var effects = JsonSerializer.Deserialize<Dictionary<string, Dictionary<string, JsonElement>>>(skill.LevelEffectsJson);
-                if (effects != null)
-                {
-                    foreach (var (level, props) in effects)
-                    {
-                        var propTexts = props
-                            .Where(p => !p.Key.StartsWith("hs") && p.Key != "lt" && p.Key != "rb")
-                            .Select(p => $"{p.Key}={p.Value}")
-                            .ToList();
-                        if (propTexts.Count > 0)
-                            sb.AppendLine($"Lv.{level}: {string.Join(", ", propTexts)}");
-                    }
-                }
-            }
-            catch
-            {
-                // JSON 解析失败，忽略
-            }
+            sb.AppendLine();
+            var hText = SkillSummaryParser.Resolve(skill.SkillH, skill.MaxLevel, commonProps);
+            sb.Append($"[Lv.{skill.MaxLevel}] {hText}");
         }
+
         return sb.ToString().TrimEnd();
+    }
+
+    private static Dictionary<string, string> ParseCommonProps(string? json)
+    {
+        if (string.IsNullOrEmpty(json)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
+        }
+        catch { return []; }
     }
 
     private void UpdateSetItemDisplay(ItemEntity? item)
@@ -351,8 +360,6 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task SearchAsync()
     {
-        if (string.IsNullOrWhiteSpace(SearchText)) return;
-
         _logger.LogInformation("搜索: \"{SearchText}\", 分类: {Category}",
             SearchText, SelectedCategoryOption.Label);
         StatusText = "正在搜索...";
@@ -361,7 +368,7 @@ public partial class MainViewModel : ObservableObject
         {
             // 技能搜索
             IsSkillMode = true;
-            var skills = await _repository.SearchSkillsByNameAsync(SearchText);
+            var skills = await _repository.SearchSkillsByNameAsync(SearchText ?? "", limit: 0);
             _skillSearchCache = skills.ToDictionary(s => s.SkillId);
 
             // 转换为 ItemEntity 以复用 DataGrid 显示
@@ -371,7 +378,7 @@ public partial class MainViewModel : ObservableObject
                 Name = s.Name,
                 Description = s.Description,
                 Category = ItemCategory.Skill,
-                SubCategory = $"职业{s.JobId}",
+                SubCategory = $"job:{s.JobId}",
                 ReqLevel = s.MaxLevel,
                 IconData = s.IconData,
             }).ToList();
@@ -390,6 +397,7 @@ public partial class MainViewModel : ObservableObject
                 Keyword = SearchText,
                 Category = SelectedCategoryOption.Value,
                 SubCategory = SelectedSubCategoryOption?.Value,
+                Limit = 0,
             };
             var results = await _repository.QueryAsync(filter);
             SearchResults = new ObservableCollection<ItemEntity>(results);
