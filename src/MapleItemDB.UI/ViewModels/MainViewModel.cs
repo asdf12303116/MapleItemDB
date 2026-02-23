@@ -159,6 +159,12 @@ public partial class MainViewModel : ObservableObject
     private bool _isCashSelected;
 
     /// <summary>
+    /// 是否显示 SN 相关筛选/列/右键菜单 (装备或现金时显示)
+    /// </summary>
+    [ObservableProperty]
+    private bool _showSnFeatures;
+
+    /// <summary>
     /// 是否显示限时道具列 (消耗品/其他/设置时显示)
     /// </summary>
     [ObservableProperty]
@@ -255,6 +261,7 @@ public partial class MainViewModel : ObservableObject
     {
         IsEquipSelected = value.Value == ItemCategory.Equip;
         IsCashSelected = value.Value == ItemCategory.Cash;
+        ShowSnFeatures = IsEquipSelected || IsCashSelected;
         ShowTimeLimitedColumn = value.Value is ItemCategory.Consume or ItemCategory.Etc or ItemCategory.Setup;
         ShowSubCategoryAndLevel = !IsCashSelected && !ShowTimeLimitedColumn;
         SelectedSubCategoryOption = EquipSubCategoryOptions[0];

@@ -31,9 +31,10 @@
             <RowDefinition Height="Auto"/>
         </Grid.RowDefinitions>
 
-        <!-- 顶部工具栏: 分类筛选 + 子分类筛选 + 搜索 + 清除 -->
+        <!-- 顶部工具栏: 分类筛选 + 子分类筛选 + SN 筛选 + 搜索 + 清除 -->
         <Grid Grid.Row="0" Margin="0,0,0,8">
             <Grid.ColumnDefinitions>
+                <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="Auto"/>
                 <ColumnDefinition Width="*"/>
@@ -60,17 +61,17 @@
                       Margin="0,0,8,0"
                       Visibility="{Binding IsEquipSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-            <!-- 现金 SN 筛选下拉框 -->
-            <ComboBox Grid.Column="1"
+            <!-- SN 筛选下拉框 (装备/现金) -->
+            <ComboBox Grid.Column="2"
                       ItemsSource="{Binding SnFilterOptions}"
                       SelectedItem="{Binding SelectedSnFilterOption}"
                       DisplayMemberPath="Label"
                       Width="100"
                       VerticalContentAlignment="Center"
                       Margin="0,0,8,0"
-                      Visibility="{Binding IsCashSelected, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                      Visibility="{Binding ShowSnFeatures, Converter={StaticResource BoolToVisibilityConverter}}"/>
 
-            <TextBox Grid.Column="2"
+            <TextBox Grid.Column="3"
                      Text="{Binding SearchText, UpdateSourceTrigger=PropertyChanged}"
                      VerticalContentAlignment="Center"
                      Padding="6,4"
@@ -80,14 +81,14 @@
                 </TextBox.InputBindings>
             </TextBox>
 
-            <Button Grid.Column="3"
+            <Button Grid.Column="4"
                     Content="搜索"
                     Margin="8,0,0,0"
                     Padding="16,6"
                     Command="{Binding SearchCommand}"/>
 
             <!-- 清除搜索按钮 -->
-            <Button Grid.Column="4"
+            <Button Grid.Column="5"
                     Content="✕"
                     Margin="4,0,0,0"
                     Padding="8,6"
@@ -120,19 +121,19 @@
                         <MenuItem Header="复制ID" Command="{Binding CopySelectedItemIdCommand}"/>
                         <MenuItem Header="复制SN"
                                   Command="{Binding Data.CopySelectedItemSnCommand, Source={StaticResource VmProxy}}"
-                                  Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
+                                  Visibility="{Binding Data.ShowSnFeatures, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     </ContextMenu>
                 </DataGrid.ContextMenu>
                 <DataGrid.Columns>
                     <DataGridTextColumn Header="ID" Binding="{Binding ItemId}" Width="80"/>
+                    <DataGridTextColumn Header="SN" Binding="{Binding Sn}" Width="80"
+                                        Visibility="{Binding Data.ShowSnFeatures, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <DataGridTextColumn Header="名称" Binding="{Binding Name}" Width="*"/>
                     <DataGridTextColumn Header="分类" Binding="{Binding Category, Converter={StaticResource CategoryConverter}}" Width="50"/>
                     <DataGridTextColumn Header="子分类" Binding="{Binding SubCategory, Converter={StaticResource SubCategoryConverter}}" Width="60"
                                         Visibility="{Binding Data.ShowSubCategoryAndLevel, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <DataGridTextColumn Header="等级" Binding="{Binding ReqLevel}" Width="45"
                                         Visibility="{Binding Data.ShowSubCategoryAndLevel, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
-                    <DataGridTextColumn Header="SN" Binding="{Binding Sn}" Width="80"
-                                        Visibility="{Binding Data.IsCashSelected, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                     <DataGridTextColumn Header="限时" Binding="{Binding TimeLimited, Converter={StaticResource TimeLimitedConverter}}" Width="50"
                                         Visibility="{Binding Data.ShowTimeLimitedColumn, Source={StaticResource VmProxy}, Converter={StaticResource BoolToVisibilityConverter}}"/>
                 </DataGrid.Columns>
