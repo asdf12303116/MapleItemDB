@@ -266,6 +266,15 @@ public partial class MainViewModel : ObservableObject
         ShowSubCategoryAndLevel = !IsCashSelected && !ShowTimeLimitedColumn;
         SelectedSubCategoryOption = EquipSubCategoryOptions[0];
         SelectedSnFilterOption = SnFilterOptions[0];
+
+        // 切换大类时，清空当前搜索结果与详情状态，避免显示上一次分类结果。
+        SearchResults = [];
+        SelectedItem = null;
+        IsSkillMode = false;
+        SelectedSkill = null;
+        SkillDetailText = null;
+        _skillSearchCache.Clear();
+        StatusText = "就绪";
     }
 
     partial void OnSelectedItemChanged(ItemEntity? value)
