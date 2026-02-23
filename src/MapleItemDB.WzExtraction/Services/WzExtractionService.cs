@@ -341,6 +341,11 @@ public class WzExtractionService : IWzExtractor, IDisposable
                             if (iconData != null)
                                 item.IconData = iconData;
 
+                            // 提取 sample 预览图 (伤害皮肤等消耗品)
+                            var sampleData = exporter.ExportSampleFromItem(idNode);
+                            if (sampleData != null)
+                                item.PreviewData = sampleData;
+
                             exported++;
                             if (exported % 500 == 0)
                                 progress?.Report(new ExtractionProgress("导出图标", exported, total, $"已导出 {exported}/{total}"));

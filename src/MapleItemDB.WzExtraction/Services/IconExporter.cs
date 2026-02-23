@@ -147,6 +147,19 @@ public class IconExporter
         return ExportPngNode(iconNode);
     }
 
+    /// <summary>
+    /// 从普通道具 id 节点导出预览图 (sample)
+    /// 伤害皮肤等消耗品通过 info/sample 提供预览
+    /// </summary>
+    public byte[]? ExportSampleFromItem(Wz_Node idNode)
+    {
+        var infoNode = idNode.Nodes["info"];
+        if (infoNode == null) return null;
+
+        var sampleNode = infoNode.Nodes["sample"];
+        return ExportPngNode(sampleNode);
+    }
+
     private byte[]? ExportPngNode(Wz_Node? iconNode)
     {
         // 使用 ResolvePng 处理 UOL / _inlink / _outlink 引用
