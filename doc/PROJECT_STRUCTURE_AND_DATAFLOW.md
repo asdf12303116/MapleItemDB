@@ -43,6 +43,9 @@ maplestory_toolbox/
 │   │   └── Helpers/
 │   │       └── WzNodeExtensions.cs    # WZ 节点扩展方法
 │   │
+│   ├── MapleItemDB.Cli/              # 命令行测试工具 (mapleidb)
+│   │   └── Program.cs               # CLI 入口 (子命令分发 + JSON 输出)
+│   │
 │   └── MapleItemDB.UI/               # WPF 客户端
 │       ├── App.xaml.cs                # 应用入口 + DI 容器
 │       ├── ViewModels/
@@ -283,3 +286,114 @@ CREATE TABLE dim_skills (
 5. `dim_items` ADD `time_limited` INTEGER DEFAULT 0
 6. `dim_items` ADD `req_job` INTEGER
 7. PRAGMA `journal_mode=WAL`
+
+## CLI 测试工具 (mapleidb)
+
+命令行测试工具，用于验证数据提取与查询功能，所有查询命令输出纯 JSON。
+
+- **可执行文件名**: `mapleidb`（项目 `MapleItemDB.Cli`，`AssemblyName` 为 `mapleidb`）
+- **默认数据库**: `D:\GAME\MapleStory228\Data\mapleitemdb.db`
+- **DI 复用**: 通过 `ServiceRegistration.Configure` 注册服务，禁用日志（`LogLevel.None`），不依赖 `MainViewModel`，直接使用 `IItemRepository` 查询
+- **输出约定**: JSON 格式，camelCase 属性名，枚举输出为字符串，`byte[]` 字段序列化为 `true/false` 表示是否有数据
+
+### 子命令
+
+```
+mapleidb extract [--wz <dir>] [--db <path>]
+mapleidb search [keyword] [options] [--db <path>]
+mapleidb skill [keyword] [--limit <n>] [--db <path>]
+mapleidb get <id> [--db <path>]
+mapleidb stats [--db <path>]
+```
+
+#### extract — WZ 数据提取
+
+从 WZ 数据目录提取道具/技能/套装数据并写入数据库。进度信息输出到 stderr，最终统计以 JSON 输出到 stdout。
+
+| 参数 | 说明 | 默认值 |
+|------|------|--------|
+| `--wz <dir>` | WZ 数据目录 | `D:\GAME\MapleStory228\Data` |
+| `--db <path>` | 数据库路径 | 同全局默认 |
+
+调用链: `IWzExtractor.ExtractAllAsync` → `IItemRepository.BulkUpsert*`
+
+#### search — 道具查询
+
+覆盖 `ItemQueryFilter` 全部字段，输出 JSON 数组。
+
+| 参数 | 对应 Filter 字段 | 说明 |
+|------|-----------------|------|
+| `[keyword]` (位置参数) | `Keyword` | 模糊搜索名称/描述/ID |
+| `--category <cat>` | `Category` | Equip/Consume/Etc/Setup/Cash/Pet |
+| `--sub <sub>` | `SubCategory` | Weapon/Cap/Coat 等 |
+| `--min-level <n>` | `MinLevel` | 最小等级 |
+| `--max-level <n>` | `MaxLevel` | 最大等级 |
+| `--cash` | `IsCash=true` | 仅商城道具 |
+| `--has-sn` | `HasSn=true` | 仅含 SN |
+| `--min-boss <n>` | `MinBossDmg` | 最小 Boss 伤害 |
+| `--min-ied <n>` | `MinIed` | 最小无视防御 |
+| `--limit <n>` | `Limit` | 结果数限制 (默认 50) |
+
+调用链: `IItemRepository.QueryAsync(filter)`
+
+#### skill — 技能查询
+
+输出 JSON 数组。
+
+| 参数 | 说明 |
+|------|------|
+| `[keyword]` | 技能名称模糊搜索 |
+| `--limit <n>` | 结果数限制 (默认 50) |
+
+调用链: `IItemRepository.SearchSkillsByNameAsync`
+
+#### get — 道具详情
+
+输出 JSON 对象 `{ item, setItem }`，包含道具全部属性及关联套装信息。
+
+| 参数 | 说明 |
+|------|------|
+| `<id>` (必填) | 道具 ID |
+
+调用链: `IItemRepository.GetByIdAsync` + `IItemRepository.GetAllSetItemsAsync`
+
+#### stats — 数据库统计
+
+输出 JSON 对象，包含各分类道具数量、套装数量、技能数量、商城道具数量、含 SN 道具数量。
+
+### JSON 输出规则
+
+| 规则 | 说明 |
+|------|------|
+| 属性命名 | `JsonNamingPolicy.CamelCase` |
+| 枚举序列化 | `JsonStringEnumConverter`，输出原始名称 (如 `"Equip"`) |
+| 中文编码 | `JavaScriptEncoder.UnsafeRelaxedJsonEscaping`，中文直输不转义 |
+| blob 字段 | 自定义 `BlobHasValueConverter`，`byte[]` → `true` (有数据) / `false` (无数据) |
+| null 字段 | 保留输出，便于验证完整 Schema |
+| 缩进 | `WriteIndented = true` |
+
+### 运行示例
+
+```bash
+# 构建
+dotnet build src/MapleItemDB.Cli
+
+# 帮助
+dotnet run --project src/MapleItemDB.Cli -- --help
+dotnet run --project src/MapleItemDB.Cli -- search --help
+
+# 统计
+dotnet run --project src/MapleItemDB.Cli -- stats
+
+# 搜索装备
+dotnet run --project src/MapleItemDB.Cli -- search 阿比斯 --category Equip --min-level 200
+
+# 技能搜索
+dotnet run --project src/MapleItemDB.Cli -- skill 终极攻击 --limit 10
+
+# 道具详情
+dotnet run --project src/MapleItemDB.Cli -- get 1572000
+
+# 指定数据库
+dotnet run --project src/MapleItemDB.Cli -- stats --db ./other.db
+```

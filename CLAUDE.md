@@ -22,7 +22,20 @@
 - 新功能或修改应优先遵循文档中的架构与数据流约束。
 - 若代码现状与文档冲突：先报告冲突点，再给出按“现有代码兼容”与“按文档修正”两种方案及影响。
 
+6) 修改后验证（CLI 优先）
+- 当修改涉及“需要验证功能行为”的场景时，优先使用 `MapleItemDB.Cli`（`mapleidb`）做最小闭环验证，而不是仅靠静态代码阅读。
+- 默认优先使用以下命令按需验证：
+  - `dotnet run --project src/MapleItemDB.Cli -- stats`
+  - `dotnet run --project src/MapleItemDB.Cli -- search <keyword> [options]`
+  - `dotnet run --project src/MapleItemDB.Cli -- get <itemId>`
+  - `dotnet run --project src/MapleItemDB.Cli -- skill <keyword> --limit <n>`
+- 仅当变更涉及提取流程时，再执行：
+  - `dotnet run --project src/MapleItemDB.Cli -- extract [--wz <dir>] [--db <path>]`
+- 验证结果在回复中至少包含：执行命令、关键输出字段（JSON）、结论（通过/未通过）。
+- 若本地环境导致无法执行 CLI（如缺少 WZ/数据库路径），需明确阻塞原因，并给出可复现的命令。
+
 执行策略（简版）：
 - 能用上下文解决 -> 直接做
 - 不能 -> 先读 doc/PROJECT_STRUCTURE_AND_DATAFLOW.md
 - 还不能 -> 再读最相关代码
+- 修改完需要验证功能 -> 优先用 CLI 做针对性测试
