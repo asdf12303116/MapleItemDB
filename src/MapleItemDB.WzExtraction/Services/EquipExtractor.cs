@@ -76,7 +76,7 @@ public class EquipExtractor
             Name = _stringResolver.GetName(itemId) ?? $"Unknown-{itemId}",
             Description = _stringResolver.GetDescription(itemId),
             Category = ItemCategory.Equip,
-            SubCategory = ResolveSubCategory(itemId, subCategory),
+            SubCategory = ResolveSubCategory(itemId, subCategory, infoNode.GetStringValue("islot")),
 
             // 需求属性
             ReqLevel = infoNode.GetIntValue("reqLevel"),
@@ -162,7 +162,7 @@ public class EquipExtractor
         [106] = "Pants",
         [107] = "Shoes",
         [108] = "Glove",
-        [109] = "Shield",
+        [109] = "SecondWeapon",
         [110] = "Cape",
         [111] = "Ring",
         [112] = "Pendant",
@@ -177,11 +177,25 @@ public class EquipExtractor
         [167] = "Heart",
     };
 
-    private static string ResolveSubCategory(int itemId, string folderName)
+    private static string ResolveSubCategory(int itemId, string folderName, string? iSlot)
     {
+        if (IsSecondWeaponItem(itemId, iSlot))
+            return "SecondWeapon";
+
         var prefix = itemId / 10000;
         if (IdPrefixToSubCategory.TryGetValue(prefix, out var resolved))
             return resolved;
         return folderName;
+    }
+
+    private static bool IsSecondWeaponItem(int itemId, string? iSlot)
+    {
+        // islot 以 "Si" 开头即为副手插槽装备（含盾牌），但需排除纹章 (119xxxx)
+        if (string.IsNullOrEmpty(iSlot)
+            || !iSlot.StartsWith("Si", StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        var prefix = itemId / 10000;
+        return prefix != 119;
     }
 }

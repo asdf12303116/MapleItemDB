@@ -126,7 +126,6 @@ public partial class MainViewModel : ObservableObject
         new("腰带", "Belt"),
         new("肩饰", "Shoulder"),
         new("披风", "Cape"),
-        new("盾牌", "Shield"),
         new("戒指", "Ring"),
         new("吊坠", "Pendant"),
         new("勋章", "Medal"),
