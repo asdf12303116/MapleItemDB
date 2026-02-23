@@ -17,19 +17,25 @@ public interface IItemRepository
     Task<IReadOnlyList<ItemEntity>> QueryAsync(ItemQueryFilter filter);
 
     /// <summary>批量插入或更新道具</summary>
-    Task BulkUpsertAsync(IEnumerable<ItemEntity> items);
+    Task BulkUpsertAsync(IEnumerable<ItemEntity> items,
+        IProgress<(int current, int total)>? progress = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>获取全量 Id-Name 索引 (用于内存搜索)</summary>
     Task<IReadOnlyList<(int Id, string Name)>> GetIdNameIndexAsync();
 
     /// <summary>批量插入或更新套装信息</summary>
-    Task BulkUpsertSetItemsAsync(IEnumerable<SetItemInfo> setItems);
+    Task BulkUpsertSetItemsAsync(IEnumerable<SetItemInfo> setItems,
+        IProgress<(int current, int total)>? progress = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>获取全部套装信息</summary>
     Task<Dictionary<int, SetItemInfo>> GetAllSetItemsAsync();
 
     /// <summary>批量插入或更新技能</summary>
-    Task BulkUpsertSkillsAsync(IEnumerable<SkillEntity> skills);
+    Task BulkUpsertSkillsAsync(IEnumerable<SkillEntity> skills,
+        IProgress<(int current, int total)>? progress = null,
+        CancellationToken cancellationToken = default);
 
     /// <summary>按名称搜索技能</summary>
     Task<IReadOnlyList<SkillEntity>> SearchSkillsByNameAsync(string keyword, int limit = 50);

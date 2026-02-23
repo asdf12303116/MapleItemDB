@@ -100,20 +100,22 @@ public class ItemRepository : IItemRepository
         return rows.Select(r => r.ToEntity()).ToList();
     }
 
-    public async Task BulkUpsertAsync(IEnumerable<ItemEntity> items)
+    public async Task BulkUpsertAsync(IEnumerable<ItemEntity> items,
+        IProgress<(int current, int total)>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         // SQL 参数名必须与 ItemRow 属性名一致 (Dapper 按属性名匹配)
         const string sql = """
             INSERT INTO dim_items (
                 item_id, name, description, category, sub_category,
-                req_level, req_str, req_dex, req_int, req_luk,
+                req_level, req_str, req_dex, req_int, req_luk, req_job,
                 inc_str, inc_dex, inc_int, inc_luk,
                 inc_pad, inc_mad, inc_pdd, inc_mdd, inc_mhp, inc_mmp,
                 dynamic_stats, consume_spec,
                 is_cash, price, icon_data, preview_data, setitem_id, sn, time_limited, extracted_at
             ) VALUES (
                 @item_id, @name, @description, @category, @sub_category,
-                @req_level, @req_str, @req_dex, @req_int, @req_luk,
+                @req_level, @req_str, @req_dex, @req_int, @req_luk, @req_job,
                 @inc_str, @inc_dex, @inc_int, @inc_luk,
                 @inc_pad, @inc_mad, @inc_pdd, @inc_mdd, @inc_mhp, @inc_mmp,
                 @dynamic_stats, @consume_spec,
@@ -124,6 +126,7 @@ public class ItemRepository : IItemRepository
                 category=excluded.category, sub_category=excluded.sub_category,
                 req_level=excluded.req_level, req_str=excluded.req_str,
                 req_dex=excluded.req_dex, req_int=excluded.req_int, req_luk=excluded.req_luk,
+                req_job=excluded.req_job,
                 inc_str=excluded.inc_str, inc_dex=excluded.inc_dex,
                 inc_int=excluded.inc_int, inc_luk=excluded.inc_luk,
                 inc_pad=excluded.inc_pad, inc_mad=excluded.inc_mad,
@@ -137,15 +140,25 @@ public class ItemRepository : IItemRepository
                 extracted_at=excluded.extracted_at
             """;
 
-        _logger.LogInformation("开始批量写入 {Count} 条记录...", items.Count());
-        using var conn = _connectionFactory.Create();
-        await conn.OpenAsync();
-        using var tx = await conn.BeginTransactionAsync();
-
         var rows = items.Select(ItemRow.FromEntity).ToList();
-        await conn.ExecuteAsync(sql, rows, transaction: tx);
+        _logger.LogInformation("开始批量写入 {Count} 条记录...", rows.Count);
 
-        await tx.CommitAsync();
+        using var conn = _connectionFactory.Create();
+        await conn.OpenAsync(cancellationToken);
+        ApplyWritePragmas(conn);
+
+        int written = 0;
+        foreach (var batch in Chunk(rows, 1000))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var tx = await conn.BeginTransactionAsync(cancellationToken);
+            await conn.ExecuteAsync(sql, batch, transaction: tx);
+            await tx.CommitAsync(cancellationToken);
+            written += batch.Count;
+            progress?.Report((written, rows.Count));
+        }
+
+        RestoreDefaultPragmas(conn);
         _logger.LogInformation("批量写入完成");
     }
 
@@ -159,7 +172,9 @@ public class ItemRepository : IItemRepository
         return result;
     }
 
-    public async Task BulkUpsertSetItemsAsync(IEnumerable<SetItemInfo> setItems)
+    public async Task BulkUpsertSetItemsAsync(IEnumerable<SetItemInfo> setItems,
+        IProgress<(int current, int total)>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         const string sql = """
             INSERT INTO dim_setitems (setitem_id, name, data_json)
@@ -168,20 +183,30 @@ public class ItemRepository : IItemRepository
                 name=excluded.name, data_json=excluded.data_json
             """;
 
-        using var conn = _connectionFactory.Create();
-        await conn.OpenAsync();
-        using var tx = await conn.BeginTransactionAsync();
-
         var rows = setItems.Select(s => new
         {
             setitem_id = s.SetItemId,
             name = s.SetItemName,
             data_json = JsonSerializer.Serialize(s),
-        });
-        await conn.ExecuteAsync(sql, rows, transaction: tx);
+        }).ToList();
 
-        await tx.CommitAsync();
-        _logger.LogInformation("套装信息写入完成: {Count} 条", setItems.Count());
+        using var conn = _connectionFactory.Create();
+        await conn.OpenAsync(cancellationToken);
+        ApplyWritePragmas(conn);
+
+        int written = 0;
+        foreach (var batch in Chunk(rows, 1000))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var tx = await conn.BeginTransactionAsync(cancellationToken);
+            await conn.ExecuteAsync(sql, batch, transaction: tx);
+            await tx.CommitAsync(cancellationToken);
+            written += batch.Count;
+            progress?.Report((written, rows.Count));
+        }
+
+        RestoreDefaultPragmas(conn);
+        _logger.LogInformation("套装信息写入完成: {Count} 条", rows.Count);
     }
 
     public async Task<Dictionary<int, SetItemInfo>> GetAllSetItemsAsync()
@@ -201,7 +226,9 @@ public class ItemRepository : IItemRepository
         return result;
     }
 
-    public async Task BulkUpsertSkillsAsync(IEnumerable<SkillEntity> skills)
+    public async Task BulkUpsertSkillsAsync(IEnumerable<SkillEntity> skills,
+        IProgress<(int current, int total)>? progress = null,
+        CancellationToken cancellationToken = default)
     {
         const string sql = """
             INSERT INTO dim_skills (
@@ -220,15 +247,25 @@ public class ItemRepository : IItemRepository
                 extracted_at=excluded.extracted_at
             """;
 
-        _logger.LogInformation("开始批量写入技能 {Count} 条...", skills.Count());
-        using var conn = _connectionFactory.Create();
-        await conn.OpenAsync();
-        using var tx = await conn.BeginTransactionAsync();
-
         var rows = skills.Select(SkillRow.FromEntity).ToList();
-        await conn.ExecuteAsync(sql, rows, transaction: tx);
+        _logger.LogInformation("开始批量写入技能 {Count} 条...", rows.Count);
 
-        await tx.CommitAsync();
+        using var conn = _connectionFactory.Create();
+        await conn.OpenAsync(cancellationToken);
+        ApplyWritePragmas(conn);
+
+        int written = 0;
+        foreach (var batch in Chunk(rows, 500))
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            using var tx = await conn.BeginTransactionAsync(cancellationToken);
+            await conn.ExecuteAsync(sql, batch, transaction: tx);
+            await tx.CommitAsync(cancellationToken);
+            written += batch.Count;
+            progress?.Report((written, rows.Count));
+        }
+
+        RestoreDefaultPragmas(conn);
         _logger.LogInformation("技能写入完成");
     }
 
@@ -254,6 +291,44 @@ public class ItemRepository : IItemRepository
     }
 
     /// <summary>
+    /// 写入前设置 PRAGMA 优化参数
+    /// </summary>
+    private static void ApplyWritePragmas(Microsoft.Data.Sqlite.SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            PRAGMA synchronous = NORMAL;
+            PRAGMA cache_size = -64000;
+            PRAGMA temp_store = MEMORY;
+            """;
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// 写入完成后恢复默认 PRAGMA
+    /// </summary>
+    private static void RestoreDefaultPragmas(Microsoft.Data.Sqlite.SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            PRAGMA synchronous = FULL;
+            PRAGMA cache_size = -2000;
+            """;
+        cmd.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// 将序列按指定大小分批
+    /// </summary>
+    private static IEnumerable<List<T>> Chunk<T>(List<T> source, int chunkSize)
+    {
+        for (int i = 0; i < source.Count; i += chunkSize)
+        {
+            yield return source.GetRange(i, Math.Min(chunkSize, source.Count - i));
+        }
+    }
+
+    /// <summary>
     /// 内部行模型 — 属性名与数据库列名、SQL 参数名对齐
     /// </summary>
     private class ItemRow
@@ -268,6 +343,7 @@ public class ItemRepository : IItemRepository
         public int? req_dex { get; set; }
         public int? req_int { get; set; }
         public int? req_luk { get; set; }
+        public int? req_job { get; set; }
         public int? inc_str { get; set; }
         public int? inc_dex { get; set; }
         public int? inc_int { get; set; }
@@ -301,6 +377,7 @@ public class ItemRepository : IItemRepository
             ReqDex = req_dex,
             ReqInt = req_int,
             ReqLuk = req_luk,
+            ReqJob = req_job,
             IncSTR = inc_str,
             IncDEX = inc_dex,
             IncINT = inc_int,
@@ -335,6 +412,7 @@ public class ItemRepository : IItemRepository
             req_dex = e.ReqDex,
             req_int = e.ReqInt,
             req_luk = e.ReqLuk,
+            req_job = e.ReqJob,
             inc_str = e.IncSTR,
             inc_dex = e.IncDEX,
             inc_int = e.IncINT,

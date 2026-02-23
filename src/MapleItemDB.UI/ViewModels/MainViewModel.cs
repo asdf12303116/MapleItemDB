@@ -627,12 +627,36 @@ public partial class MainViewModel : ObservableObject
                 result.Items.Count, result.SetItems.Count);
 
             ExtractionStatus = "正在写入数据库...";
-            ExtractionProgress = 92;
+            ExtractionProgress = 90;
             _logger.LogInformation("开始写入数据库...");
-            await _repository.BulkUpsertAsync(result.Items);
-            await _repository.BulkUpsertSetItemsAsync(result.SetItems.Values);
-            if (result.Skills.Count > 0)
-                await _repository.BulkUpsertSkillsAsync(result.Skills);
+
+            // 在线程池执行 DB 写入，避免同步 I/O 阻塞 UI 线程
+            var itemCount = result.Items.Count;
+            var skillCount = result.Skills.Count;
+            await Task.Run(async () =>
+            {
+                // 道具写入: 90% ~ 95%
+                var itemProgress = new Progress<(int current, int total)>(p =>
+                {
+                    ExtractionProgress = 90 + 5.0 * p.current / p.total;
+                    ExtractionStatus = $"正在写入道具 ({p.current}/{p.total})...";
+                });
+                await _repository.BulkUpsertAsync(result.Items, itemProgress);
+
+                // 套装写入 (数量较少，不单独映射进度)
+                await _repository.BulkUpsertSetItemsAsync(result.SetItems.Values);
+
+                // 技能写入: 95% ~ 97%
+                if (skillCount > 0)
+                {
+                    var skillProgress = new Progress<(int current, int total)>(p =>
+                    {
+                        ExtractionProgress = 95 + 2.0 * p.current / p.total;
+                        ExtractionStatus = $"正在写入技能 ({p.current}/{p.total})...";
+                    });
+                    await _repository.BulkUpsertSkillsAsync(result.Skills, skillProgress);
+                }
+            });
             _logger.LogInformation("数据库写入完成");
 
             ExtractionStatus = "正在刷新索引...";
@@ -826,7 +850,12 @@ public static class StatsDisplayHelper
                 flagLines.Add(new StatsLine(text, IsFlag: true));
         }
 
-        // 武器分类 (紧接特殊标志之后)
+        // 职业限制
+        var jobText = FormatReqJob(item.ReqJob);
+        if (jobText != null)
+            flagLines.Add(new StatsLine(jobText));
+
+        // 武器分类
         if (item.SubCategory is "Weapon" or "SecondWeapon")
         {
             var weaponType = WeaponTypeHelper.GetWeaponTypeName(item.ItemId);
@@ -876,6 +905,34 @@ public static class StatsDisplayHelper
     {
         if (value.HasValue && value.Value != 0 && StatFormats.TryGetValue(key, out var fmt))
             lines.Add(new StatsLine(string.Format(fmt, value.Value)));
+    }
+
+    /// <summary>
+    /// 解析 reqJob 位掩码，返回职业限制显示文本。
+    /// reqJob=0 或 null → 全职业 (不显示)；reqJob=-1 → 无职业可用
+    /// 位: 1=战士, 2=魔法师, 4=弓箭手, 8=飞侠, 16=海盗
+    /// </summary>
+    private static string? FormatReqJob(int? reqJob)
+    {
+        if (reqJob == null || reqJob == 0)
+            return null; // 全职业，不需要额外显示
+
+        int mask = reqJob.Value;
+        if (mask == -1)
+            return "职业:无";
+
+        // 检查是否全职业 (0x1f = 0b11111)
+        if ((mask & 0x1f) == 0x1f)
+            return null;
+
+        var jobs = new List<string>();
+        if ((mask & 1) != 0)  jobs.Add("战士");
+        if ((mask & 2) != 0)  jobs.Add("魔法师");
+        if ((mask & 4) != 0)  jobs.Add("弓箭手");
+        if ((mask & 8) != 0)  jobs.Add("飞侠");
+        if ((mask & 16) != 0) jobs.Add("海盗");
+
+        return $"职业:{string.Join(", ", jobs)}";
     }
 
     private static void AddDynamicLine(List<StatsLine> lines, Dictionary<string, int> dynamic, string key)

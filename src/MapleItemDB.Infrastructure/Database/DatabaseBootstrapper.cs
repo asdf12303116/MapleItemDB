@@ -42,6 +42,14 @@ public class DatabaseBootstrapper
 
         // 安全迁移: dim_items 新增 time_limited 列
         await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN time_limited INTEGER DEFAULT 0;");
+
+        // 安全迁移: dim_items 新增 req_job 列 (职业需求位掩码)
+        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN req_job INTEGER;");
+
+        // 启用 WAL 模式 (持久化设置，提升并发读写性能)
+        using var walCmd = conn.CreateCommand();
+        walCmd.CommandText = "PRAGMA journal_mode=WAL;";
+        await walCmd.ExecuteNonQueryAsync();
     }
 
     private static async Task SafeAddColumnAsync(Microsoft.Data.Sqlite.SqliteConnection conn, string sql)

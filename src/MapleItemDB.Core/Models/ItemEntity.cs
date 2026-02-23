@@ -27,6 +27,9 @@ public class ItemEntity
     public int? ReqInt { get; set; }
     public int? ReqLuk { get; set; }
 
+    /// <summary>职业需求 (位掩码: 1=战士, 2=魔法师, 4=弓箭手, 8=飞侠, 16=海盗)</summary>
+    public int? ReqJob { get; set; }
+
     // ---- 装备核心数值 ----
     public int? IncSTR { get; set; }
     public int? IncDEX { get; set; }

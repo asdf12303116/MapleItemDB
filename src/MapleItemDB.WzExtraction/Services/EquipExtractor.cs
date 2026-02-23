@@ -84,6 +84,7 @@ public class EquipExtractor
             ReqDex = infoNode.GetIntValue("reqDEX"),
             ReqInt = infoNode.GetIntValue("reqINT"),
             ReqLuk = infoNode.GetIntValue("reqLUK"),
+            ReqJob = infoNode.GetIntValue("reqJob"),
 
             // 核心数值
             IncSTR = infoNode.GetIntValue("incSTR"),
