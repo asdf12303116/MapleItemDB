@@ -3,5 +3,6 @@
     <LangVersion>latest</LangVersion>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
+    <Version>2026.02.24.1</Version>
   </PropertyGroup>
 </Project>
