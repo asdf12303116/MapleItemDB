@@ -22,15 +22,24 @@
 - 新功能或修改应优先遵循文档中的架构与数据流约束。
 - 若代码现状与文档冲突：先报告冲突点，再给出按“现有代码兼容”与“按文档修正”两种方案及影响。
 
-6) 修改后验证（CLI 优先）
-- 当修改涉及“需要验证功能行为”的场景时，优先使用 `MapleItemDB.Cli`（`mapleidb`）做最小闭环验证，而不是仅靠静态代码阅读。
+6) Git 提交前版本号更新（强制）
+- 在执行 git commit 之前，必须先更新 Directory.Build.props 中的版本号字段，再进行提交。
+- 版本号格式固定为：yyyy.MM.dd.xx（例如：2026.02.24.1）。
+- 其中：
+  - yyyy.MM.dd 为提交当天日期（本地时间）。
+  - xx 为当日递增序号，从 1 开始（同一天内每次提交递增）。
+- 若当天已有同格式版本号，提交前必须在当前最大序号基础上 +1。
+- 若未先更新版本号，禁止提交。
+
+7) 修改后验证（CLI 优先）
+- 当修改涉及“需要验证功能行为”的场景时，优先使用 MapleItemDB.Cli（mapleidb）做最小闭环验证，而不是仅靠静态代码阅读。
 - 默认优先使用以下命令按需验证：
-  - `dotnet run --project src/MapleItemDB.Cli -- stats`
-  - `dotnet run --project src/MapleItemDB.Cli -- search <keyword> [options]`
-  - `dotnet run --project src/MapleItemDB.Cli -- get <itemId>`
-  - `dotnet run --project src/MapleItemDB.Cli -- skill <keyword> --limit <n>`
+  - dotnet run --project src/MapleItemDB.Cli -- stats
+  - dotnet run --project src/MapleItemDB.Cli -- search <keyword> [options]
+  - dotnet run --project src/MapleItemDB.Cli -- get <itemId>
+  - dotnet run --project src/MapleItemDB.Cli -- skill <keyword> --limit <n>
 - 仅当变更涉及提取流程时，再执行：
-  - `dotnet run --project src/MapleItemDB.Cli -- extract [--wz <dir>] [--db <path>]`
+  - dotnet run --project src/MapleItemDB.Cli -- extract [--wz <dir>] [--db <path>]
 - 验证结果在回复中至少包含：执行命令、关键输出字段（JSON）、结论（通过/未通过）。
 - 若本地环境导致无法执行 CLI（如缺少 WZ/数据库路径），需明确阻塞原因，并给出可复现的命令。
 
