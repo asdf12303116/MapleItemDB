@@ -12,6 +12,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\MapleItemDB.Bootstrap\MapleItemDB.Bootstrap.csproj" />
     <ProjectReference Include="..\MapleItemDB.Core\MapleItemDB.Core.csproj" />
     <ProjectReference Include="..\MapleItemDB.WzExtraction\MapleItemDB.WzExtraction.csproj" />
     <ProjectReference Include="..\MapleItemDB.Infrastructure\MapleItemDB.Infrastructure.csproj" />

@@ -9,7 +9,10 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <ProjectReference Include="..\MapleItemDB.UI\MapleItemDB.UI.csproj" />
+    <ProjectReference Include="..\MapleItemDB.Application\MapleItemDB.Application.csproj" />
+    <ProjectReference Include="..\MapleItemDB.Bootstrap\MapleItemDB.Bootstrap.csproj" />
+    <ProjectReference Include="..\MapleItemDB.Core\MapleItemDB.Core.csproj" />
+    <ProjectReference Include="..\MapleItemDB.Infrastructure\MapleItemDB.Infrastructure.csproj" />
   </ItemGroup>
 
 </Project>

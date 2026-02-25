@@ -1,13 +1,10 @@
 using System.Collections.ObjectModel;
-using System.Text;
-using System.Text.Json;
-using System.Text.RegularExpressions;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using MapleItemDB.Application.Contracts;
+using MapleItemDB.Application.UseCases;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
-using MapleItemDB.Infrastructure.Cache;
-using MapleItemDB.UI.Converters;
 using Microsoft.Extensions.Logging;
 
 namespace MapleItemDB.UI.ViewModels;
@@ -32,12 +29,16 @@ public record SnFilterOption(string Label, bool? Value);
 /// </summary>
 public partial class MainViewModel : ObservableObject
 {
-    private readonly IItemRepository _repository;
-    private readonly IWzExtractor _extractor;
-    private readonly InMemorySearchIndex _searchIndex;
+    private readonly IInitializeCatalogUseCase _initializeCatalogUseCase;
+    private readonly ISearchItemsUseCase _searchItemsUseCase;
+    private readonly IGetItemByIdUseCase _getItemByIdUseCase;
+    private readonly IGetItemDetailUseCase _getItemDetailUseCase;
+    private readonly IExtractAndImportUseCase _extractAndImportUseCase;
+    private readonly ISearchIndex _searchIndex;
     private readonly ILogger<MainViewModel> _logger;
 
     private Dictionary<int, SetItemInfo> _setItems = [];
+    private IReadOnlyDictionary<int, SkillEntity> _skillSearchCache = new Dictionary<int, SkillEntity>();
 
     [ObservableProperty]
     private string _searchText = "";
@@ -187,14 +188,38 @@ public partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private SnFilterOption _selectedSnFilterOption;
 
+    /// <summary>
+    /// 当前选中的技能 (搜索技能分类时)
+    /// </summary>
+    [ObservableProperty]
+    private SkillEntity? _selectedSkill;
+
+    /// <summary>
+    /// 技能详情文本
+    /// </summary>
+    [ObservableProperty]
+    private string? _skillDetailText;
+
+    /// <summary>
+    /// 是否正在查看技能
+    /// </summary>
+    [ObservableProperty]
+    private bool _isSkillMode;
+
     public MainViewModel(
-        IItemRepository repository,
-        IWzExtractor extractor,
-        InMemorySearchIndex searchIndex,
+        IInitializeCatalogUseCase initializeCatalogUseCase,
+        ISearchItemsUseCase searchItemsUseCase,
+        IGetItemByIdUseCase getItemByIdUseCase,
+        IGetItemDetailUseCase getItemDetailUseCase,
+        IExtractAndImportUseCase extractAndImportUseCase,
+        ISearchIndex searchIndex,
         ILogger<MainViewModel> logger)
     {
-        _repository = repository;
-        _extractor = extractor;
+        _initializeCatalogUseCase = initializeCatalogUseCase;
+        _searchItemsUseCase = searchItemsUseCase;
+        _getItemByIdUseCase = getItemByIdUseCase;
+        _getItemDetailUseCase = getItemDetailUseCase;
+        _extractAndImportUseCase = extractAndImportUseCase;
         _searchIndex = searchIndex;
         _logger = logger;
         _selectedCategoryOption = CategoryOptions[0];
@@ -211,32 +236,17 @@ public partial class MainViewModel : ObservableObject
         _logger.LogInformation("开始加载搜索索引...");
         try
         {
-            var index = await _repository.GetIdNameIndexAsync();
-            _searchIndex.Load(index);
+            var (searchIndex, setItems) = await _initializeCatalogUseCase.ExecuteAsync();
+            _searchIndex.Load(searchIndex);
+            _setItems = setItems;
             StatusText = $"就绪 — 已加载 {_searchIndex.Count} 个道具索引";
-            _logger.LogInformation("搜索索引加载完成: {Count} 条", _searchIndex.Count);
+            _logger.LogInformation("搜索索引加载完成: {Count} 条, 套装: {SetCount} 个",
+                _searchIndex.Count, _setItems.Count);
         }
         catch (Exception ex)
         {
             StatusText = $"索引加载失败: {ex.Message}（请先提取数据）";
             _logger.LogError(ex, "索引加载失败");
-        }
-
-        // 从数据库加载套装信息
-        await LoadSetItemsFromDbAsync();
-    }
-
-    private async Task LoadSetItemsFromDbAsync()
-    {
-        try
-        {
-            _setItems = await _repository.GetAllSetItemsAsync();
-            if (_setItems.Count > 0)
-                _logger.LogInformation("套装信息加载完成: {Count} 个套装", _setItems.Count);
-        }
-        catch (Exception ex)
-        {
-            _logger.LogWarning(ex, "套装信息加载失败");
         }
     }
 
@@ -272,191 +282,34 @@ public partial class MainViewModel : ObservableObject
         IsSkillMode = false;
         SelectedSkill = null;
         SkillDetailText = null;
-        _skillSearchCache.Clear();
+        _skillSearchCache = new Dictionary<int, SkillEntity>();
         StatusText = "就绪";
     }
 
     partial void OnSelectedItemChanged(ItemEntity? value)
     {
-        SelectedItemCategoryDisplay = BuildCategoryDisplay(value);
-
-        if (value != null && value.Category == ItemCategory.Skill
-            && _skillSearchCache.TryGetValue(value.ItemId, out var skill))
-        {
-            SelectedSkill = skill;
-            SkillDetailText = BuildSkillDetailText(skill);
-            FormattedStats = [];
-            HasFormattedStats = false;
-            HasSetItem = false;
-            SetItemDisplayText = null;
-            return;
-        }
-
-        SelectedSkill = null;
-        SkillDetailText = null;
-        FormattedStats = value != null ? StatsDisplayHelper.FormatStats(value) : [];
-        HasFormattedStats = FormattedStats.Count > 0;
-        UpdateSetItemDisplay(value);
+        _ = UpdateItemDetailAsync(value);
     }
 
-    private static readonly Dictionary<ItemCategory, string> CategoryDisplayNames = new()
+    private async Task UpdateItemDetailAsync(ItemEntity? value)
     {
-        [ItemCategory.Equip] = "装备",
-        [ItemCategory.Consume] = "消耗",
-        [ItemCategory.Etc] = "其他",
-        [ItemCategory.Setup] = "设置",
-        [ItemCategory.Cash] = "点装",
-        [ItemCategory.Pet] = "宠物",
-        [ItemCategory.Skill] = "技能",
-    };
-
-    private static string BuildCategoryDisplay(ItemEntity? item)
-    {
-        if (item == null) return "";
-
-        var cat = CategoryDisplayNames.GetValueOrDefault(item.Category, item.Category.ToString());
-
-        // 子分类
-        var subCat = SubCategoryDisplayHelper.GetSubCategoryName(item.SubCategory);
-        if (!string.IsNullOrEmpty(subCat))
-            cat += " / " + subCat;
-
-        // 武器细分类型 (根据 ID 前缀)
-        if (item.SubCategory is "Weapon" or "SecondWeapon")
-        {
-            var weaponType = WeaponTypeHelper.GetWeaponTypeName(item.ItemId);
-            if (weaponType != null)
-                cat += " / " + weaponType;
-        }
-
-        // 技能: 显示职业名
-        if (item.Category == ItemCategory.Skill && item.SubCategory is { } sub
-            && sub.StartsWith("job:") && int.TryParse(sub.AsSpan(4), out var jobId))
-        {
-            cat += " / " + JobNameHelper.GetJobName(jobId);
-        }
-
-        return cat;
-    }
-
-    private static string BuildSkillDetailText(SkillEntity skill)
-    {
-        var sb = new StringBuilder();
-        sb.AppendLine($"[{JobNameHelper.GetJobName(skill.JobId)}] {skill.Name}");
-        if (skill.IsHidden)
-            sb.AppendLine("(隐藏技能)");
-
-        // 解析 common 公式字典
-        var commonProps = ParseCommonProps(skill.CommonPropsJson);
-
-        // 描述文本: 使用 SummaryParser 风格替换占位符
-        if (!string.IsNullOrEmpty(skill.Description))
-        {
-            sb.AppendLine();
-            var desc = SkillSummaryParser.Resolve(skill.Description, skill.MaxLevel, commonProps);
-            sb.Append(desc);
-        }
-
-        // 等级效果描述 (h 模板)
-        if (!string.IsNullOrEmpty(skill.SkillH) && skill.MaxLevel > 0)
-        {
-            sb.AppendLine();
-            sb.AppendLine();
-            var hText = SkillSummaryParser.Resolve(skill.SkillH, skill.MaxLevel, commonProps);
-            sb.Append($"[Lv.{skill.MaxLevel}] {hText}");
-        }
-
-        return sb.ToString().TrimEnd();
-    }
-
-    private static Dictionary<string, string> ParseCommonProps(string? json)
-    {
-        if (string.IsNullOrEmpty(json)) return [];
         try
         {
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(json) ?? [];
+            var result = await _getItemDetailUseCase.ExecuteAsync(value, _skillSearchCache, _setItems);
+            SelectedItemCategoryDisplay = result.CategoryDisplay;
+            SelectedSkill = result.Skill;
+            SkillDetailText = result.SkillDetailText;
+            FormattedStats = result.FormattedStats;
+            HasFormattedStats = result.FormattedStats.Count > 0;
+            HasSetItem = result.HasSetItem;
+            SetItemDisplayText = result.SetItemDisplayText;
+            IsSkillMode = result.Skill != null;
         }
-        catch { return []; }
-    }
-
-    private void UpdateSetItemDisplay(ItemEntity? item)
-    {
-        if (item?.SetItemId == null || !_setItems.TryGetValue(item.SetItemId.Value, out var setInfo))
+        catch (Exception ex)
         {
-            SetItemDisplayText = null;
-            HasSetItem = false;
-            return;
+            _logger.LogError(ex, "更新详情失败: ItemId={ItemId}", value?.ItemId);
         }
-
-        HasSetItem = true;
-        SetItemDisplayText = BuildEffectsText(setInfo);
     }
-
-    private string BuildEffectsText(SetItemInfo setInfo)
-    {
-        var sb = new StringBuilder();
-        sb.Append(setInfo.SetItemName);
-
-        foreach (var effect in setInfo.Effects)
-        {
-            sb.AppendLine();
-
-            // 检查 boss 标志位: boss=1 时 incDAMr 应显示为 Boss 伤害
-            var hasBossFlag = effect.Props.TryGetValue("boss", out var bossVal) && bossVal != 0;
-
-            var props = new List<string>();
-            foreach (var (key, val) in effect.Props)
-            {
-                // 跳过 boss 标志位本身
-                if (key == "boss") continue;
-
-                // 当 boss=1 时，incDAMr 表示 Boss 伤害而非总伤害
-                if (key == "incDAMr" && hasBossFlag)
-                {
-                    props.Add($"攻击首领怪时的伤害 : +{val}%");
-                    continue;
-                }
-
-                var display = StatsDisplayHelper.FormatSingleStat(key, val);
-                props.Add(display ?? $"{key} : +{val}");
-            }
-
-            // 技能信息
-            foreach (var skill in effect.ActiveSkills)
-            {
-                var skillName = skill.SkillName ?? $"技能#{skill.SkillId}";
-                var skillText = $"{skillName} Lv.{skill.Level}";
-                if (!string.IsNullOrEmpty(skill.Description))
-                    skillText += $" ({skill.Description})";
-                props.Add(skillText);
-            }
-
-            sb.Append($"【{effect.RequiredCount}件】{string.Join(", ", props)}");
-        }
-
-        return sb.ToString();
-    }
-
-    /// <summary>
-    /// 当前选中的技能 (搜索技能分类时)
-    /// </summary>
-    [ObservableProperty]
-    private SkillEntity? _selectedSkill;
-
-    /// <summary>
-    /// 技能详情文本
-    /// </summary>
-    [ObservableProperty]
-    private string? _skillDetailText;
-
-    /// <summary>
-    /// 是否正在查看技能
-    /// </summary>
-    [ObservableProperty]
-    private bool _isSkillMode;
-
-    // 技能搜索结果缓存 (skillId → SkillEntity)
-    private Dictionary<int, SkillEntity> _skillSearchCache = [];
 
     [RelayCommand]
     private async Task SearchAsync()
@@ -465,67 +318,38 @@ public partial class MainViewModel : ObservableObject
             SearchText, SelectedCategoryOption.Label);
         StatusText = "正在搜索...";
 
-        var isAllCategory = SelectedCategoryOption.Value == null;
-        var isSkillCategory = SelectedCategoryOption.Value == ItemCategory.Skill;
-
-        if (isSkillCategory || isAllCategory)
+        try
         {
-            // 搜索技能
-            IsSkillMode = true;
-            var skills = await _repository.SearchSkillsByNameAsync(SearchText ?? "", limit: 0);
-            _skillSearchCache = skills.ToDictionary(s => s.SkillId);
-
-            // 转换为 ItemEntity 以复用 DataGrid 显示
-            var skillItems = skills.Select(s => new ItemEntity
-            {
-                ItemId = s.SkillId,
-                Name = s.Name,
-                Description = s.Description,
-                Category = ItemCategory.Skill,
-                SubCategory = $"job:{s.JobId}",
-                ReqLevel = s.MaxLevel,
-                IconData = s.IconData,
-            }).ToList();
-
-            if (isAllCategory)
-            {
-                // 全部分类: 同时搜索道具
-                var filter = new ItemQueryFilter
-                {
-                    Keyword = SearchText,
-                    Limit = 0,
-                };
-                var itemResults = await _repository.QueryAsync(filter);
-                var combined = itemResults.Concat(skillItems).ToList();
-                SearchResults = new ObservableCollection<ItemEntity>(combined);
-                StatusText = $"找到 {itemResults.Count} 个道具, {skills.Count} 个技能";
-                _logger.LogInformation("全部搜索完成: {ItemCount} 个道具, {SkillCount} 个技能",
-                    itemResults.Count, skills.Count);
-            }
-            else
-            {
-                SearchResults = new ObservableCollection<ItemEntity>(skillItems);
-                StatusText = $"找到 {skills.Count} 个技能";
-                _logger.LogInformation("技能搜索完成: {Count} 个结果", skills.Count);
-            }
-        }
-        else
-        {
-            // 道具搜索
-            IsSkillMode = false;
-            _skillSearchCache.Clear();
-            var filter = new ItemQueryFilter
+            var request = new SearchRequest
             {
                 Keyword = SearchText,
                 Category = SelectedCategoryOption.Value,
                 SubCategory = SelectedSubCategoryOption?.Value,
                 HasSn = SelectedSnFilterOption?.Value,
                 Limit = 0,
+                IncludeSkillsWhenAllCategories = true,
             };
-            var results = await _repository.QueryAsync(filter);
-            SearchResults = new ObservableCollection<ItemEntity>(results);
-            StatusText = $"找到 {results.Count} 个结果";
-            _logger.LogInformation("搜索完成: {Count} 个结果", results.Count);
+
+            var result = await _searchItemsUseCase.ExecuteAsync(request);
+
+            _skillSearchCache = result.SkillsById;
+            IsSkillMode = result.IsSkillMode;
+            SearchResults = new ObservableCollection<ItemEntity>(result.Items);
+
+            if (result.SkillCount > 0 && result.ItemCount > 0)
+                StatusText = $"找到 {result.ItemCount} 个道具, {result.SkillCount} 个技能";
+            else if (result.SkillCount > 0)
+                StatusText = $"找到 {result.SkillCount} 个技能";
+            else
+                StatusText = $"找到 {result.ItemCount} 个结果";
+
+            _logger.LogInformation("搜索完成: {ItemCount} 个道具, {SkillCount} 个技能",
+                result.ItemCount, result.SkillCount);
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"搜索失败: {ex.Message}";
+            _logger.LogError(ex, "搜索失败");
         }
     }
 
@@ -541,7 +365,7 @@ public partial class MainViewModel : ObservableObject
         IsSkillMode = false;
         SelectedSkill = null;
         SkillDetailText = null;
-        _skillSearchCache.Clear();
+        _skillSearchCache = new Dictionary<int, SkillEntity>();
         StatusText = "就绪";
     }
 
@@ -585,19 +409,26 @@ public partial class MainViewModel : ObservableObject
     [RelayCommand]
     private async Task LoadItemDetailAsync(int itemId)
     {
-        var item = await _repository.GetByIdAsync(itemId);
-        SelectedItem = item;
+        try
+        {
+            var result = await _getItemByIdUseCase.ExecuteAsync(itemId);
+            SelectedItem = result?.Item;
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, "加载道具详情失败: ItemId={ItemId}", itemId);
+        }
     }
 
     [RelayCommand]
     private async Task ExtractDataAsync(string gameDirectory)
     {
-        if (string.IsNullOrWhiteSpace(gameDirectory)) return;
+        if (string.IsNullOrWhiteSpace(gameDirectory))
+            return;
 
         IsExtracting = true;
         ExtractionProgress = 0;
 
-        // 各阶段加权进度映射: Phase → (起始百分比, 权重)
         var phaseWeights = new Dictionary<string, (double Start, double Weight)>
         {
             ["加载 WZ 文件"] = (0, 5),
@@ -610,64 +441,56 @@ public partial class MainViewModel : ObservableObject
             ["完成"] = (90, 10),
         };
 
-        var progress = new Progress<ExtractionProgress>(p =>
+        var extractionProgress = new Progress<ExtractionProgress>(p =>
         {
             ExtractionStatus = p.Message ?? p.Phase;
-            if (phaseWeights.TryGetValue(p.Phase, out var w) && p.Total > 0)
-                ExtractionProgress = w.Start + w.Weight * ((double)p.Current / p.Total);
+            if (phaseWeights.TryGetValue(p.Phase, out var weight) && p.Total > 0)
+                ExtractionProgress = weight.Start + weight.Weight * ((double)p.Current / p.Total);
             else if (p.Total > 0)
                 ExtractionProgress = (double)p.Current / p.Total * 100;
+        });
+
+        var itemWriteProgress = new Progress<(int current, int total)>(p =>
+        {
+            if (p.total <= 0)
+                return;
+
+            ExtractionProgress = 90 + 5.0 * p.current / p.total;
+            ExtractionStatus = $"正在写入道具 ({p.current}/{p.total})...";
+        });
+
+        var skillWriteProgress = new Progress<(int current, int total)>(p =>
+        {
+            if (p.total <= 0)
+                return;
+
+            ExtractionProgress = 95 + 2.0 * p.current / p.total;
+            ExtractionStatus = $"正在写入技能 ({p.current}/{p.total})...";
         });
 
         try
         {
             _logger.LogInformation("开始提取 WZ 数据: {GameDirectory}", gameDirectory);
-            var result = await _extractor.ExtractAllAsync(gameDirectory, progress);
-            _logger.LogInformation("WZ 提取完成: {Count} 个道具, {SetCount} 个套装",
-                result.Items.Count, result.SetItems.Count);
-
-            ExtractionStatus = "正在写入数据库...";
-            ExtractionProgress = 90;
-            _logger.LogInformation("开始写入数据库...");
-
-            // 在线程池执行 DB 写入，避免同步 I/O 阻塞 UI 线程
-            var itemCount = result.Items.Count;
-            var skillCount = result.Skills.Count;
-            await Task.Run(async () =>
+            var result = await _extractAndImportUseCase.ExecuteAsync(new ExtractImportRequest
             {
-                // 道具写入: 90% ~ 95%
-                var itemProgress = new Progress<(int current, int total)>(p =>
-                {
-                    ExtractionProgress = 90 + 5.0 * p.current / p.total;
-                    ExtractionStatus = $"正在写入道具 ({p.current}/{p.total})...";
-                });
-                await _repository.BulkUpsertAsync(result.Items, itemProgress);
-
-                // 套装写入 (数量较少，不单独映射进度)
-                await _repository.BulkUpsertSetItemsAsync(result.SetItems.Values);
-
-                // 技能写入: 95% ~ 97%
-                if (skillCount > 0)
-                {
-                    var skillProgress = new Progress<(int current, int total)>(p =>
-                    {
-                        ExtractionProgress = 95 + 2.0 * p.current / p.total;
-                        ExtractionStatus = $"正在写入技能 ({p.current}/{p.total})...";
-                    });
-                    await _repository.BulkUpsertSkillsAsync(result.Skills, skillProgress);
-                }
+                GameDirectory = gameDirectory,
+                ExtractionProgress = extractionProgress,
+                ItemWriteProgress = itemWriteProgress,
+                SkillWriteProgress = skillWriteProgress,
             });
-            _logger.LogInformation("数据库写入完成");
+
+            _logger.LogInformation(
+                "提取并导入完成: {ItemCount} 个道具, {SkillCount} 个技能",
+                result.Bundle.Items.Count,
+                result.Bundle.Skills.Count);
 
             ExtractionStatus = "正在刷新索引...";
             ExtractionProgress = 97;
-            _logger.LogDebug("刷新搜索索引...");
-            await InitializeAsync();
+            _searchIndex.Load(result.SearchIndex);
+            _setItems = result.SetItems;
 
             ExtractionProgress = 100;
-            StatusText = $"提取完成 — 共 {result.Items.Count} 个道具, {result.Skills.Count} 个技能";
-            _logger.LogInformation("全部完成: {Count} 个道具, {SkillCount} 个技能",
-                result.Items.Count, result.Skills.Count);
+            StatusText = $"提取完成 — 共 {result.Bundle.Items.Count} 个道具, {result.Bundle.Skills.Count} 个技能";
         }
         catch (Exception ex)
         {
@@ -679,305 +502,5 @@ public partial class MainViewModel : ObservableObject
             IsExtracting = false;
             ExtractionProgress = 0;
         }
-    }
-}
-
-/// <summary>
-/// 道具属性格式化辅助类 — 将属性转换为游戏风格中文文本
-/// </summary>
-public static class StatsDisplayHelper
-{
-    // 核心属性映射 (字段名 → 显示格式)
-    private static readonly Dictionary<string, string> StatFormats = new()
-    {
-        ["reqLevel"] = "需要等级 : {0}",
-        ["incSTR"] = "力量 : +{0}",
-        ["incDEX"] = "敏捷 : +{0}",
-        ["incINT"] = "智力 : +{0}",
-        ["incLUK"] = "运气 : +{0}",
-        ["incMHP"] = "MaxHP : +{0}",
-        ["incMMP"] = "MaxMP : +{0}",
-        ["incPAD"] = "攻击力 : +{0}",
-        ["incMAD"] = "魔法攻击力 : +{0}",
-        ["incPDD"] = "防御力 : +{0}",
-        ["incMDD"] = "魔法防御力 : +{0}",
-        // 百分比加成
-        ["incSTRr"] = "力量 : +{0}%",
-        ["incDEXr"] = "敏捷 : +{0}%",
-        ["incINTr"] = "智力 : +{0}%",
-        ["incLUKr"] = "运气 : +{0}%",
-        ["incMHPr"] = "MaxHP : +{0}%",
-        ["incMMPr"] = "MaxMP : +{0}%",
-        ["incPADr"] = "攻击力 : +{0}%",
-        ["incMADr"] = "魔法攻击力 : +{0}%",
-        ["incPDDr"] = "防御力 : +{0}%",
-        ["incMDDr"] = "魔法防御力 : +{0}%",
-        ["incACCr"] = "命中值 : +{0}%",
-        ["incEVAr"] = "回避值 : +{0}%",
-        // 特殊属性
-        ["boss_dmg"] = "BOSS攻击时伤害+{0}%",
-        ["bdR"] = "BOSS攻击时伤害+{0}%",
-        ["incBDR"] = "BOSS攻击时伤害+{0}%",
-        ["ied"] = "无视怪物防御力 : +{0}%",
-        ["imdR"] = "无视怪物防御力 : +{0}%",
-        ["incIMDR"] = "无视怪物防御力 : +{0}%",
-        ["total_dmg"] = "总伤害 : +{0}%",
-        ["damR"] = "总伤害 : +{0}%",
-        ["incDAMr"] = "总伤害 : +{0}%",
-        ["nbdR"] = "普通怪物伤害+{0}%",
-        ["all_stat_pct"] = "全部属性 : +{0}%",
-        ["statR"] = "全部属性 : +{0}%",
-        ["all_stat"] = "全部属性 : +{0}",
-        ["incAllStat"] = "全部属性 : +{0}",
-        ["speed"] = "移动速度 : +{0}",
-        ["incSpeed"] = "移动速度 : +{0}",
-        ["jump"] = "跳跃力 : +{0}",
-        ["incJump"] = "跳跃力 : +{0}",
-        ["attack_speed"] = "攻击速度 : {0}",
-        ["attackSpeed"] = "攻击速度 : {0}",
-        ["upgrade_slots"] = "升级可用次数 : {0}",
-        ["tuc"] = "升级可用次数 : {0}",
-        ["knockback"] = "击退 : {0}%",
-        ["incACC"] = "命中值 : +{0}",
-        ["incEVA"] = "回避值 : +{0}",
-        ["incCr"] = "暴击概率 : +{0}%",
-        ["incCDr"] = "暴击伤害 : +{0}%",
-        ["incTerR"] = "状态异常抗性 : +{0}%",
-        ["incAsrR"] = "全部属性抗性 : +{0}%",
-        ["incEXPr"] = "经验值获取量 : +{0}%",
-        ["reduceCooltime"] = "冷却时间减少 : {0}秒",
-        ["incARC"] = "ARC : +{0}",
-        ["incAUT"] = "AUT : +{0}",
-        ["incMDF"] = "异常状态抗性 : +{0}",
-        ["incCraft"] = "手技 : +{0}",
-        ["incPVPDamage"] = "PVP伤害 : +{0}",
-        ["incMaxDamage"] = "最大伤害 : +{0}",
-        ["incAllskill"] = "全部技能等级 : +{0}",
-        // ItemOption.img 派生键名 (套装 Option 引用)
-        ["ignoreTargetDEF"] = "无视怪物防御率 : +{0}%",
-        ["incCriticaldamage"] = "暴击伤害 : +{0}%",
-        ["incCriticaldamageMin"] = "最小暴击伤害 : +{0}%",
-        ["incCriticaldamageMax"] = "最大暴击伤害 : +{0}%",
-        ["RecoveryHP"] = "每10秒回复HP : {0}",
-        ["RecoveryMP"] = "每10秒回复MP : {0}",
-        ["incMesoProp"] = "金币获取量 : +{0}%",
-        ["incRewardProp"] = "道具掉落率 : +{0}%",
-        ["mpconReduce"] = "MP消耗减少 : {0}%",
-        ["incPQEXPr"] = "组队任务经验 : +{0}%",
-    };
-
-    // 攻击速度等级映射
-    private static readonly Dictionary<int, string> AttackSpeedNames = new()
-    {
-        [2] = "更快(2)",
-        [3] = "更快(3)",
-        [4] = "快(4)",
-        [5] = "快(5)",
-        [6] = "普通(6)",
-        [7] = "慢(7)",
-        [8] = "慢(8)",
-        [9] = "更慢(9)",
-    };
-
-    // 特殊标志键名集合
-    private static readonly HashSet<string> FlagKeys =
-    [
-        "_flag_only", "_flag_tradeBlock", "_flag_equipTradeBlock",
-        "_flag_accountSharable", "_flag_timeLimited", "_flag_superiorEqp",
-        "_flag_noPotential", "_flag_fixedPotential",
-    ];
-
-    private static readonly Dictionary<string, string> FlagTexts = new()
-    {
-        ["_flag_only"]              = "唯一道具",
-        ["_flag_tradeBlock"]        = "不可交易",
-        ["_flag_equipTradeBlock"]   = "装备后不可交易",
-        ["_flag_accountSharable"]   = "账号内共享",
-        ["_flag_timeLimited"]       = "限时道具",
-        ["_flag_superiorEqp"]       = "星之力增强道具",
-        ["_flag_noPotential"]       = "不可使用潜能",
-        ["_flag_fixedPotential"]    = "固定潜能",
-    };
-
-    /// <summary>
-    /// 将 ItemEntity 的属性格式化为游戏风格文本行 (StatsLine)，标志行置顶
-    /// </summary>
-    public static List<StatsLine> FormatStats(ItemEntity item)
-    {
-        var normalLines = new List<StatsLine>();
-        var flagLines = new List<StatsLine>();
-
-        // 需求等级
-        AddLine(normalLines, "reqLevel", item.ReqLevel);
-
-        // 升级可用次数 (从 DynamicStats)
-        var dynamic = ParseDynamic(item.DynamicStats);
-        AddDynamicLine(normalLines, dynamic, "upgrade_slots");
-
-        // 核心属性
-        AddLine(normalLines, "incSTR", item.IncSTR);
-        AddLine(normalLines, "incDEX", item.IncDEX);
-        AddLine(normalLines, "incINT", item.IncINT);
-        AddLine(normalLines, "incLUK", item.IncLUK);
-        AddLine(normalLines, "incMHP", item.IncMHP);
-        AddLine(normalLines, "incMMP", item.IncMMP);
-        AddLine(normalLines, "incPAD", item.IncPAD);
-        AddLine(normalLines, "incMAD", item.IncMAD);
-        AddLine(normalLines, "incPDD", item.IncPDD);
-        AddLine(normalLines, "incMDD", item.IncMDD);
-
-        // 动态属性
-        AddDynamicLine(normalLines, dynamic, "boss_dmg");
-        AddDynamicLine(normalLines, dynamic, "ied");
-        AddDynamicLine(normalLines, dynamic, "total_dmg");
-        AddDynamicLine(normalLines, dynamic, "all_stat_pct");
-        AddDynamicLine(normalLines, dynamic, "all_stat");
-        AddDynamicLine(normalLines, dynamic, "speed");
-        AddDynamicLine(normalLines, dynamic, "jump");
-        AddDynamicLine(normalLines, dynamic, "knockback");
-
-        // 攻击速度 (特殊格式)
-        if (dynamic.TryGetValue("attack_speed", out var atkSpd))
-        {
-            var spdName = AttackSpeedNames.GetValueOrDefault(atkSpd, atkSpd.ToString());
-            normalLines.Add(new StatsLine($"攻击速度 : {spdName}"));
-        }
-
-        // 特殊标志 → flagLines (IsFlag=true，橙色置顶)
-        foreach (var (key, text) in FlagTexts)
-        {
-            if (dynamic.TryGetValue(key, out var val) && val != 0)
-                flagLines.Add(new StatsLine(text, IsFlag: true));
-        }
-
-        // 职业限制
-        var jobText = FormatReqJob(item.ReqJob);
-        if (jobText != null)
-            flagLines.Add(new StatsLine(jobText));
-
-        // 武器分类
-        if (item.SubCategory is "Weapon" or "SecondWeapon")
-        {
-            var weaponType = WeaponTypeHelper.GetWeaponTypeName(item.ItemId);
-            if (weaponType != null)
-                flagLines.Add(new StatsLine($"分类 : {weaponType}"));
-        }
-
-        // 消耗品属性
-        if (!string.IsNullOrEmpty(item.ConsumeSpec))
-        {
-            var consume = ParseDynamic(item.ConsumeSpec);
-            if (consume.Count > 0)
-            {
-                normalLines.Add(new StatsLine("──── 使用效果 ────"));
-                foreach (var (key, val) in consume)
-                {
-                    var display = FormatConsumeStat(key, val);
-                    if (display != null)
-                        normalLines.Add(new StatsLine(display));
-                }
-            }
-        }
-
-        // 标志行置顶
-        flagLines.AddRange(normalLines);
-        return flagLines;
-    }
-
-    /// <summary>
-    /// 格式化单个属性 (供套装效果复用)
-    /// </summary>
-    public static string? FormatSingleStat(string key, int value)
-    {
-        if (StatFormats.TryGetValue(key, out var fmt))
-        {
-            if (key is "attack_speed" or "attackSpeed")
-            {
-                var spdName = AttackSpeedNames.GetValueOrDefault(value, value.ToString());
-                return string.Format(fmt, spdName);
-            }
-            return string.Format(fmt, value);
-        }
-        return null;
-    }
-
-    private static void AddLine(List<StatsLine> lines, string key, int? value)
-    {
-        if (value.HasValue && value.Value != 0 && StatFormats.TryGetValue(key, out var fmt))
-            lines.Add(new StatsLine(string.Format(fmt, value.Value)));
-    }
-
-    /// <summary>
-    /// 解析 reqJob 位掩码，返回职业限制显示文本。
-    /// reqJob=0 或 null → 全职业 (不显示)；reqJob=-1 → 无职业可用
-    /// 位: 1=战士, 2=魔法师, 4=弓箭手, 8=飞侠, 16=海盗
-    /// </summary>
-    private static string? FormatReqJob(int? reqJob)
-    {
-        if (reqJob == null || reqJob == 0)
-            return null; // 全职业，不需要额外显示
-
-        int mask = reqJob.Value;
-        if (mask == -1)
-            return "职业:无";
-
-        // 检查是否全职业 (0x1f = 0b11111)
-        if ((mask & 0x1f) == 0x1f)
-            return null;
-
-        var jobs = new List<string>();
-        if ((mask & 1) != 0)  jobs.Add("战士");
-        if ((mask & 2) != 0)  jobs.Add("魔法师");
-        if ((mask & 4) != 0)  jobs.Add("弓箭手");
-        if ((mask & 8) != 0)  jobs.Add("飞侠");
-        if ((mask & 16) != 0) jobs.Add("海盗");
-
-        return $"职业:{string.Join(", ", jobs)}";
-    }
-
-    private static void AddDynamicLine(List<StatsLine> lines, Dictionary<string, int> dynamic, string key)
-    {
-        if (dynamic.TryGetValue(key, out var val) && val != 0)
-        {
-            if (StatFormats.TryGetValue(key, out var fmt))
-                lines.Add(new StatsLine(string.Format(fmt, val)));
-        }
-    }
-
-    private static Dictionary<string, int> ParseDynamic(string? json)
-    {
-        if (string.IsNullOrEmpty(json)) return [];
-        try
-        {
-            return JsonSerializer.Deserialize<Dictionary<string, int>>(json) ?? [];
-        }
-        catch
-        {
-            return [];
-        }
-    }
-
-    private static readonly Dictionary<string, string> ConsumeFormats = new()
-    {
-        ["hp"] = "HP 回复 : +{0}",
-        ["mp"] = "MP 回复 : +{0}",
-        ["hpR"] = "HP 回复 : +{0}%",
-        ["mpR"] = "MP 回复 : +{0}%",
-        ["time"] = "持续时间 : {0}秒",
-        ["pad"] = "攻击力 : +{0}",
-        ["mad"] = "魔法攻击力 : +{0}",
-        ["pdd"] = "防御力 : +{0}",
-        ["mdd"] = "魔法防御力 : +{0}",
-        ["speed"] = "移动速度 : +{0}",
-        ["jump"] = "跳跃力 : +{0}",
-        ["eva"] = "回避值 : +{0}",
-        ["acc"] = "命中值 : +{0}",
-    };
-
-    private static string? FormatConsumeStat(string key, int value)
-    {
-        if (ConsumeFormats.TryGetValue(key, out var fmt))
-            return string.Format(fmt, value);
-        return $"{key} : {value}";
     }
 }
