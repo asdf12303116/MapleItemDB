@@ -7,7 +7,7 @@ using Microsoft.Extensions.Logging;
 
 namespace MapleItemDB.UI;
 
-public partial class App : Application
+public partial class App : System.Windows.Application
 {
     private ServiceProvider? _serviceProvider;
 
@@ -42,3 +42,4 @@ public partial class App : Application
         base.OnExit(e);
     }
 }
+

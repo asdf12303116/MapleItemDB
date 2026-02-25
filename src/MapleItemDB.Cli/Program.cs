@@ -1,10 +1,12 @@
 ﻿using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using MapleItemDB.Application.Contracts;
+using MapleItemDB.Application.UseCases;
+using MapleItemDB.Bootstrap;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
 using MapleItemDB.Infrastructure.Database;
-using MapleItemDB.UI;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 
@@ -80,27 +82,53 @@ static async Task<int> RunExtractAsync(string[] args)
     using var provider = BuildServiceProvider(dbPath);
     await EnsureDatabaseAsync(provider);
 
-    var extractor = provider.GetRequiredService<IWzExtractor>();
-    var repository = provider.GetRequiredService<IItemRepository>();
+    var useCase = provider.GetRequiredService<IExtractAndImportUseCase>();
 
-    var progress = new Progress<ExtractionProgress>(p =>
+    var extractionProgress = new Progress<ExtractionProgress>(p =>
         Console.Error.WriteLine($"[{p.Current * 100.0 / Math.Max(p.Total, 1),6:0.00}%] {p.Phase} {p.Message}"));
 
-    var result = await extractor.ExtractAllAsync(wzDir, progress);
+    var itemWriteProgress = CreateWriteProgress("写入道具");
+    var skillWriteProgress = CreateWriteProgress("写入技能");
 
-    Console.Error.WriteLine("写入数据库...");
-    await repository.BulkUpsertAsync(result.Items);
-    await repository.BulkUpsertSetItemsAsync(result.SetItems.Values);
-    await repository.BulkUpsertSkillsAsync(result.Skills);
+    var result = await useCase.ExecuteAsync(new ExtractImportRequest
+    {
+        GameDirectory = wzDir,
+        ExtractionProgress = extractionProgress,
+        ItemWriteProgress = itemWriteProgress,
+        SkillWriteProgress = skillWriteProgress,
+    });
 
     Console.Error.WriteLine("完成。");
-    PrintJson(new { items = result.Items.Count, setItems = result.SetItems.Count, skills = result.Skills.Count });
+    PrintJson(new
+    {
+        items = result.Bundle.Items.Count,
+        setItems = result.Bundle.SetItems.Count,
+        skills = result.Bundle.Skills.Count,
+    });
     return 0;
+}
+
+static IProgress<(int current, int total)> CreateWriteProgress(string phase)
+{
+    var lastStep = -1;
+    return new Progress<(int current, int total)>(p =>
+    {
+        if (p.total <= 0)
+            return;
+
+        var percent = (int)(p.current * 100.0 / p.total);
+        var step = percent / 10;
+        if (step == lastStep && p.current != p.total)
+            return;
+
+        lastStep = step;
+        Console.Error.WriteLine($"[{phase}] {p.current}/{p.total} ({percent}%)");
+    });
 }
 
 static async Task<int> RunSearchAsync(string[] args)
 {
-    var filter = new ItemQueryFilter { Limit = 50 };
+    var request = new SearchRequest { Limit = 50, IncludeSkillsWhenAllCategories = false };
     string? dbPath = null;
     var showHelp = false;
 
@@ -110,19 +138,19 @@ static async Task<int> RunSearchAsync(string[] args)
         {
             case "-h" or "--help": showHelp = true; break;
             case "--db": dbPath = NextArg(args, ref i, "--db"); break;
-            case "--category": filter.Category = Enum.Parse<ItemCategory>(NextArg(args, ref i, "--category"), ignoreCase: true); break;
-            case "--sub": filter.SubCategory = NextArg(args, ref i, "--sub"); break;
-            case "--min-level": filter.MinLevel = int.Parse(NextArg(args, ref i, "--min-level")); break;
-            case "--max-level": filter.MaxLevel = int.Parse(NextArg(args, ref i, "--max-level")); break;
-            case "--cash": filter.IsCash = true; break;
-            case "--has-sn": filter.HasSn = true; break;
-            case "--min-boss": filter.MinBossDmg = int.Parse(NextArg(args, ref i, "--min-boss")); break;
-            case "--min-ied": filter.MinIed = int.Parse(NextArg(args, ref i, "--min-ied")); break;
-            case "--limit": filter.Limit = int.Parse(NextArg(args, ref i, "--limit")); break;
+            case "--category": request = request with { Category = Enum.Parse<ItemCategory>(NextArg(args, ref i, "--category"), ignoreCase: true) }; break;
+            case "--sub": request = request with { SubCategory = NextArg(args, ref i, "--sub") }; break;
+            case "--min-level": request = request with { MinLevel = int.Parse(NextArg(args, ref i, "--min-level")) }; break;
+            case "--max-level": request = request with { MaxLevel = int.Parse(NextArg(args, ref i, "--max-level")) }; break;
+            case "--cash": request = request with { IsCash = true }; break;
+            case "--has-sn": request = request with { HasSn = true }; break;
+            case "--min-boss": request = request with { MinBossDmg = int.Parse(NextArg(args, ref i, "--min-boss")) }; break;
+            case "--min-ied": request = request with { MinIed = int.Parse(NextArg(args, ref i, "--min-ied")) }; break;
+            case "--limit": request = request with { Limit = int.Parse(NextArg(args, ref i, "--limit")) }; break;
             default:
                 if (args[i].StartsWith('-'))
                     throw new ArgumentException($"未知参数: {args[i]}");
-                filter.Keyword = args[i];
+                request = request with { Keyword = args[i] };
                 break;
         }
     }
@@ -149,10 +177,10 @@ static async Task<int> RunSearchAsync(string[] args)
     using var provider = BuildServiceProvider(dbPath);
     await EnsureDatabaseAsync(provider);
 
-    var repository = provider.GetRequiredService<IItemRepository>();
-    var items = await repository.QueryAsync(filter);
+    var useCase = provider.GetRequiredService<ISearchItemsUseCase>();
+    var result = await useCase.ExecuteAsync(request);
 
-    PrintJson(items);
+    PrintJson(result.Items);
     return 0;
 }
 
@@ -192,8 +220,8 @@ static async Task<int> RunSkillAsync(string[] args)
     using var provider = BuildServiceProvider(dbPath);
     await EnsureDatabaseAsync(provider);
 
-    var repository = provider.GetRequiredService<IItemRepository>();
-    var skills = await repository.SearchSkillsByNameAsync(keyword ?? "", limit);
+    var useCase = provider.GetRequiredService<ISearchSkillsUseCase>();
+    var skills = await useCase.ExecuteAsync(keyword, limit);
 
     PrintJson(skills);
     return 0;
@@ -240,23 +268,16 @@ static async Task<int> RunGetAsync(string[] args)
     using var provider = BuildServiceProvider(dbPath);
     await EnsureDatabaseAsync(provider);
 
-    var repository = provider.GetRequiredService<IItemRepository>();
-    var item = await repository.GetByIdAsync(itemId.Value);
+    var useCase = provider.GetRequiredService<IGetItemByIdUseCase>();
+    var result = await useCase.ExecuteAsync(itemId.Value);
 
-    if (item is null)
+    if (result is null)
     {
         Console.Error.WriteLine($"未找到道具 ID: {itemId}");
         return 1;
     }
 
-    SetItemInfo? setItem = null;
-    if (item.SetItemId is not null)
-    {
-        var setItems = await repository.GetAllSetItemsAsync();
-        setItems.TryGetValue(item.SetItemId.Value, out setItem);
-    }
-
-    PrintJson(new { item, setItem });
+    PrintJson(new { item = result.Item, setItem = result.SetItem });
     return 0;
 }
 
@@ -287,26 +308,10 @@ static async Task<int> RunStatsAsync(string[] args)
     using var provider = BuildServiceProvider(dbPath);
     await EnsureDatabaseAsync(provider);
 
-    var repository = provider.GetRequiredService<IItemRepository>();
+    var useCase = provider.GetRequiredService<IGetStatsUseCase>();
+    var stats = await useCase.ExecuteAsync();
 
-    var allItems = await repository.QueryAsync(new ItemQueryFilter { Limit = 0 });
-    var setItems = await repository.GetAllSetItemsAsync();
-    var skills = await repository.SearchSkillsByNameAsync("", 0);
-
-    var categories = allItems
-        .GroupBy(i => i.Category)
-        .OrderBy(g => g.Key)
-        .ToDictionary(g => g.Key.ToString(), g => g.Count());
-
-    PrintJson(new
-    {
-        totalItems = allItems.Count,
-        totalSetItems = setItems.Count,
-        totalSkills = skills.Count,
-        categories,
-        cashItems = allItems.Count(i => i.IsCash),
-        snItems = allItems.Count(i => i.Sn is not null),
-    });
+    PrintJson(stats);
     return 0;
 }
 
@@ -359,14 +364,16 @@ static void PrintJson<T>(T obj) =>
 static ServiceProvider BuildServiceProvider(string? dbPath)
 {
     var services = new ServiceCollection();
-    ServiceRegistration.Configure(
-        services,
-        Path.GetFullPath(dbPath ?? CliConfig.DefaultDbPath),
+    var fullDbPath = Path.GetFullPath(dbPath ?? CliConfig.DefaultDbPath);
+
+    services.AddMapleItemDb(
+        fullDbPath,
         logging =>
         {
             logging.ClearProviders();
             logging.SetMinimumLevel(LogLevel.None);
         });
+
     return services.BuildServiceProvider();
 }
 
