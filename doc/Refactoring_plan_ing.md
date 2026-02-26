@@ -5,13 +5,13 @@
 ## 依据来源
 - 文档：`doc/Refactoring_plan.md`
 - 文档：`doc/PROJECT_STRUCTURE_AND_DATAFLOW.md`
-- 代码：本地工作区改动（`src/MapleItemDB.Application`、`src/MapleItemDB.Bootstrap`、`src/MapleItemDB.Cli`、`src/MapleItemDB.UI`）
+- 代码：本地工作区改动（`src/MapleItemDB.Application`、`src/MapleItemDB.Bootstrap`、`src/MapleItemDB.Cli`、`src/MapleItemDB.UI`、`src/MapleItemDB.Infrastructure`）
 - 运行验证：`dotnet build` 与 `mapleidb` 命令执行结果
 
 ## 总体状态
-- 当前阶段：计划步骤 1、2、4 已完成；步骤 3 部分完成（接口层拆分已完成）；步骤 5 最小下沉已完成；步骤 6 未开始；步骤 7 部分完成。
-- 核心结论：`MainViewModel` 已完全不依赖 `IItemRepository`，搜索/详情/初始化/提取均通过 Application 用例调用。UI 层达到"仅依赖 Application 用例 + ISearchIndex"的目标。
-- 当前风险：`App.xaml.cs` 仍直接使用 `DatabaseBootstrapper`（属于基础设施启动，非业务调用）。
+- 当前阶段：计划步骤 1、2、3、4、6 已完成；步骤 5 格式化下沉已完成、ViewModel 拆分评估后延后；步骤 7 部分完成。
+- 核心结论：架构分层目标已基本达成。UI/CLI 仅依赖 Application 用例；Infrastructure 仓储已读写分离为独立类；迁移机制已从 SafeAddColumn 升级为编号迁移（IDbMigration + MigrationRunner）。
+- 剩余项：ViewModel 物理拆分（评估后延后）、自动化测试、UI 人工验证。
 
 ## 按原计划步骤跟踪
 
@@ -26,61 +26,51 @@
 ### 2. 定义新端口接口和用例接口，替换 UI/CLI 调用面
 - 状态：**已完成**
 - 已完成：
-  - Application 补齐并注册全部用例：
-    - `ISearchSkillsUseCase` / `SearchSkillsUseCase`
-    - `IGetItemByIdUseCase` / `GetItemByIdUseCase`
-    - `IGetStatsUseCase` / `GetStatsUseCase`
-    - `IGetItemDetailUseCase` / `GetItemDetailUseCase`
-    - `IInitializeCatalogUseCase` / `InitializeCatalogUseCase`
-    - `ISearchItemsUseCase` / `SearchItemsUseCase`
-  - `SearchRequest` 扩展到覆盖 CLI 搜索参数（`MinLevel/MaxLevel/IsCash/MinBossDmg/MinIed`）
+  - Application 补齐并注册全部用例（7 个）
+  - `SearchRequest` 扩展到覆盖 CLI 搜索参数
   - CLI 子命令全部切换为调用 Application 用例
-  - **UI `MainViewModel` 完全切换为 Application 用例调用**：
-    - 构造函数：`IItemRepository` → `IInitializeCatalogUseCase` + `ISearchItemsUseCase` + `IGetItemByIdUseCase` + `IGetItemDetailUseCase`
-    - `InMemorySearchIndex` → `ISearchIndex`（接口注入）
-    - `InitializeAsync` → `IInitializeCatalogUseCase`
-    - `SearchAsync` → `ISearchItemsUseCase`
-    - `LoadItemDetailAsync` → `IGetItemByIdUseCase`
-    - `OnSelectedItemChanged` → `IGetItemDetailUseCase`
-    - `ExtractDataAsync` → `IExtractAndImportUseCase`（已在前一轮完成）
-  - 移除了 MainViewModel 中的 `StatsDisplayHelper`、`BuildCategoryDisplay`、`BuildSkillDetailText`、`BuildEffectsText`、`UpdateSetItemDisplay` 等本地格式化逻辑
-  - 移除了 `using MapleItemDB.Infrastructure.Cache` 等直接基础设施引用
+  - UI `MainViewModel` 完全切换为 Application 用例调用
+  - 移除了 MainViewModel 中全部格式化逻辑（~300+ 行）
 
 ### 3. 拆分仓储读写实现，迁移 SQL 与批量写入逻辑
-- 状态：部分完成
+- 状态：**已完成**
 - 已完成：
-  - Core 接口层读写拆分（`IItemReadRepository` / `IItemWriteRepository` / `ISetItem*` / `ISkill*`）
-  - 通过 DI 将 `ItemRepository` 映射到拆分接口
-- 未完成：
-  - Infrastructure 仍是单体 `ItemRepository`，尚未拆分 `Read/Write` 独立实现类
+  - Core 接口层读写拆分（6 个独立接口）
+  - Infrastructure 仓储实现类拆分为 6 个独立 Read/Write 类
+  - 共用代码提取到 `Repositories/Shared/`（RepositoryHelper、ItemRow、SkillRow）
+  - DI 注册直接指向独立实现类
+  - 删除旧单体 `ItemRepository.cs` 与聚合接口 `IItemRepository.cs`
 
 ### 4. 重构提取流程为"提取器 + 导入用例"两段式
 - 状态：**已完成**（CLI + UI）
-- 已完成：
-  - `ExtractAndImportUseCase` 已承接提取+写库+索引刷新编排
-  - CLI `extract` 已切换为仅调用 `IExtractAndImportUseCase`
-  - UI `MainViewModel.ExtractDataAsync` 已切换为调用 `IExtractAndImportUseCase`
 
 ### 5. 拆分 ViewModel，迁移格式化逻辑到服务层
-- 状态：部分完成
+- 状态：**格式化下沉已完成，ViewModel 物理拆分评估后延后**
 - 已完成：
-  - 新增 `ItemDetailFormattingHelper`（Application）并用于 `GetItemDetailUseCase`
-  - MainViewModel 中的 `StatsDisplayHelper`、`SkillSummaryParser`、`BuildCategoryDisplay` 等格式化逻辑已下沉到 Application 层
-  - MainViewModel 不再包含任何格式化业务逻辑
-- 未完成：
-  - `MainViewModel` 仍为单一大类，未拆分为 SearchViewModel / DetailViewModel / ExtractionViewModel
+  - `ItemDetailFormattingHelper`（Application）已承接全部格式化逻辑
+  - MainViewModel 不再包含任何格式化业务逻辑（~500 行纯 UI 绑定 + 命令）
+- 延后原因：
+  - MainViewModel 经过格式化下沉后仅剩 ~500 行，职责已明确为"搜索/详情/提取"的 UI 状态管理
+  - XAML 有 40+ 直接绑定 + BindingProxy 代理绑定 + code-behind 交互
+  - 拆分为子 ViewModel 需修改全部 XAML 绑定路径，改动量大、UI 回归风险高
+  - 当前单文件体量可控，建议后续视功能扩展需求再拆分
 
 ### 6. 引入迁移执行器，替换 SafeAddColumn 风格
-- 状态：未开始
-- 现状：
-  - `DatabaseBootstrapper` 仍使用 `SafeAddColumnAsync`
-  - 尚未引入 `IDbMigration` / `MigrationRunner`
+- 状态：**已完成**
+- 已完成：
+  - 新增 `IDbMigration` 接口（Version + Description + ExecuteAsync）
+  - 新增 `MigrationRunner`（管理 `_migrations` 表，按编号顺序执行未执行的迁移）
+  - 将原有 7 次 `SafeAddColumnAsync` 转化为 6 个编号迁移类（Migration001 ~ Migration006）
+  - `DatabaseBootstrapper` 重构为：创建基础 Schema → 调用 `MigrationRunner.RunAsync()`
+  - DI 注册所有迁移类 + MigrationRunner
+  - 删除 `SafeAddColumnAsync` 方法
+  - 新增 `_migrations` 表自动记录已执行的迁移版本
 
 ### 7. 全量测试 + CLI 验证 + 文档更新
 - 状态：部分完成
 - 已完成：
   - `dotnet build MapleItemDB.sln`：通过（0 error, 0 warning）
-  - CLI 验证已执行：`stats` / `search` / `skill` / `get` / `extract`
+  - CLI 验证已执行：`stats` / `search` / `skill` / `get`
   - 本文件已更新
 - 未完成：
   - 尚未新增自动化测试用例（仅执行命令行验证）
@@ -91,65 +81,89 @@
 - 结果：成功
 - 摘要：0 错误，0 警告
 
-## 本轮改动摘要（2026-02-26）
+## 本轮改动摘要（2026-02-26 #3 — 迁移机制重构）
 
-### MainViewModel 改造要点
-1. **构造函数**：去掉 `IItemRepository` + `InMemorySearchIndex`，改为注入 5 个用例接口 + `ISearchIndex`
-2. **InitializeAsync**：`_repository.GetIdNameIndexAsync()` + `_repository.GetAllSetItemsAsync()` → `_initializeCatalogUseCase.ExecuteAsync()`
-3. **SearchAsync**：手动拼 `ItemQueryFilter` + `_repository.QueryAsync/SearchSkillsByNameAsync` → `_searchItemsUseCase.ExecuteAsync(SearchRequest)`
-4. **LoadItemDetailAsync**：`_repository.GetByIdAsync` → `_getItemByIdUseCase.ExecuteAsync`
-5. **OnSelectedItemChanged**：本地 `BuildCategoryDisplay/FormatStats/BuildSkillDetailText/UpdateSetItemDisplay` → `_getItemDetailUseCase.ExecuteAsync`
-6. **删除代码**：`StatsDisplayHelper` 整个类、`CategoryDisplayNames`、`BuildCategoryDisplay`、`BuildSkillDetailText`、`ParseCommonProps`、`UpdateSetItemDisplay`、`BuildEffectsText` — 约 300+ 行 UI 侧格式化代码
+### 迁移机制要点
+1. **新增 3 个文件**：
+   - `Database/Migrations/IDbMigration.cs` — 迁移接口（Version/Description/ExecuteAsync）
+   - `Database/Migrations/MigrationRunner.cs` — 执行器（_migrations 表管理 + 按序执行）
+   - `Database/Migrations/AllMigrations.cs` — 6 个迁移实现类
+2. **重构 1 个文件**：
+   - `Database/DatabaseBootstrapper.cs` — 移除 `SafeAddColumnAsync`，改为注入 `MigrationRunner` 并调用 `RunAsync()`
+3. **DI 变更**：
+   - 注册 6 个 `IDbMigration` 实现 + `MigrationRunner`
+4. **迁移清单**：
+   | 编号 | 描述 |
+   |------|------|
+   | 001 | dim_items 新增 setitem_id 列 |
+   | 002 | dim_items 新增 icon_data/preview_data BLOB 列 |
+   | 003 | dim_skills 新增 skill_h/common_props 列 |
+   | 004 | dim_items 新增 sn 列 |
+   | 005 | dim_items 新增 time_limited 列 |
+   | 006 | dim_items 新增 req_job 列 |
 
-### 依赖变化
-- `MainViewModel` 不再 `using MapleItemDB.Infrastructure.Cache`
-- `MainViewModel` 不再 `using System.Text` / `System.Text.Json` / `System.Text.RegularExpressions`（格式化逻辑已下沉）
-- `_skillSearchCache` 类型从 `Dictionary<int, SkillEntity>` 改为 `IReadOnlyDictionary<int, SkillEntity>`（与 `SearchResult.SkillsById` 类型对齐）
-
-## 本轮 CLI 验证记录
+## 本轮 CLI 验证记录（迁移机制重构后）
 
 ### 1) 数据库统计
 - 命令：`dotnet run --project src/MapleItemDB.Cli -- stats`
-- 关键输出（JSON）：
-  - `totalItems: 83967`
-  - `totalSetItems: 767`
-  - `totalSkills: 3917`
-- 结论：通过（CLI 已通过 Application 用例输出统计）
-
-### 2) 道具搜索
-- 命令：`dotnet run --project src/MapleItemDB.Cli -- search 阿比斯 --category Equip --limit 1`
-- 关键输出（JSON）：`[]`
-- 结论：通过（命令执行与参数解析正常，返回空结果属数据本身）
-
-### 3) 技能搜索
-- 命令：`dotnet run --project src/MapleItemDB.Cli -- skill 终极攻击 --limit 2`
-- 关键输出（JSON）：
-  - `skillId: 1100002, name: "终极剑斧"`
-  - `skillId: 1120013, name: "进阶终极攻击"`
+- 关键输出：`totalItems: 83967, totalSetItems: 767, totalSkills: 3917`
 - 结论：通过
 
-### 4) 道具详情
-- 命令：`dotnet run --project src/MapleItemDB.Cli -- get 1572000`
-- 关键输出（JSON）：
-  - `item.itemId: 1572000`
-  - `item.name: "锋利之影"`
-  - `setItem: null`
-- 结论：通过
+## 历史改动摘要
 
-### 5) 提取流程
-- 命令：`dotnet run --project src/MapleItemDB.Cli -- extract --wz D:\GAME\MapleStory228\Data`
-- 关键输出（JSON）：
-  - `items: 83967`
-  - `setItems: 767`
-  - `skills: 10022`
-- 结论：通过（调用链已切到 `IExtractAndImportUseCase`）
+### 2026-02-26 #2 — 仓储实现拆分
+- 新增 9 个文件（6 仓储 + 3 共享）
+- 删除 2 个文件（ItemRepository.cs + IItemRepository.cs）
+- DI 直接绑定独立实现类
+
+### 2026-02-26 #1 — UI/CLI 切换用例
+- MainViewModel 构造函数改为注入 5 个用例接口
+- 删除 ~300 行格式化代码
+- CLI 全部切换为 Application 用例
+
+## 验收标准对照
+
+| 标准 | 状态 |
+|------|------|
+| UI/CLI 不再直接依赖具体仓储实现类 | **达成** |
+| MainViewModel 不再承担提取导入编排 | **达成** |
+| 仓储接口无"读写全能"单体接口 | **达成**（IItemRepository 已删除） |
+| 新增迁移机制可重复执行且无副作用 | **达成**（_migrations 表幂等记录） |
+
+## 当前目录结构
+
+```
+src/MapleItemDB.Infrastructure/
+├── Repositories/
+│   ├── Read/
+│   │   ├── ItemReadRepository.cs
+│   │   ├── SetItemReadRepository.cs
+│   │   └── SkillReadRepository.cs
+│   ├── Write/
+│   │   ├── ItemWriteRepository.cs
+│   │   ├── SetItemWriteRepository.cs
+│   │   └── SkillWriteRepository.cs
+│   └── Shared/
+│       ├── RepositoryHelper.cs
+│       ├── ItemRow.cs
+│       └── SkillRow.cs
+├── Database/
+│   ├── SqliteConnectionFactory.cs
+│   ├── DatabaseBootstrapper.cs
+│   └── Migrations/
+│       ├── IDbMigration.cs
+│       ├── MigrationRunner.cs
+│       └── AllMigrations.cs
+└── Cache/
+    └── InMemorySearchIndex.cs
+```
 
 ## 下一步执行清单（建议顺序）
-1. 仓储实现拆分：将 `ItemRepository` 拆分为 `Read/Write` 目录与独立类。
-2. ViewModel 拆分：将 `MainViewModel` 拆分为 `SearchViewModel` / `DetailViewModel` / `ExtractionViewModel`。
-3. 迁移机制重构：引入 `IDbMigration` + `MigrationRunner`，替换 `SafeAddColumnAsync`。
-4. 补充自动化测试与文档验收项。
+1. 补充自动化测试（用例层单元测试 + 仓储集成测试）。
+2. UI 人工验证。
+3. （可选）MainViewModel 物理拆分为子 ViewModel — 视后续功能扩展需求。
 
 ## 交接提示
 - 本文件用于"断点续做"。
-- 恢复执行时，建议从"下一步执行清单"第 1 条继续。
+- 重构核心步骤（1-4、6）均已完成。
+- 恢复执行时，建议从"下一步执行清单"第 1 条（自动化测试）继续。
