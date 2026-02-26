@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
 using MapleItemDB.Infrastructure.Database;
@@ -9,7 +9,7 @@ using static MapleItemDB.Infrastructure.Repositories.Shared.RepositoryHelper;
 namespace MapleItemDB.Infrastructure.Repositories.Write;
 
 /// <summary>
-/// 技能写仓储 — 批量写入
+/// 技能写仓储：批量写入
 /// </summary>
 public class SkillWriteRepository : ISkillWriteRepository
 {
@@ -29,15 +29,15 @@ public class SkillWriteRepository : ISkillWriteRepository
         const string sql = """
             INSERT INTO dim_skills (
                 skill_id, name, description, job_id, max_level,
-                icon_data, is_hidden, level_effects, skill_h, common_props, extracted_at
+                icon_blob_id, is_hidden, level_effects, skill_h, common_props, extracted_at
             ) VALUES (
                 @skill_id, @name, @description, @job_id, @max_level,
-                @icon_data, @is_hidden, @level_effects, @skill_h, @common_props, @extracted_at
+                @icon_blob_id, @is_hidden, @level_effects, @skill_h, @common_props, @extracted_at
             )
             ON CONFLICT(skill_id) DO UPDATE SET
                 name=excluded.name, description=excluded.description,
                 job_id=excluded.job_id, max_level=excluded.max_level,
-                icon_data=excluded.icon_data, is_hidden=excluded.is_hidden,
+                icon_blob_id=excluded.icon_blob_id, is_hidden=excluded.is_hidden,
                 level_effects=excluded.level_effects,
                 skill_h=excluded.skill_h, common_props=excluded.common_props,
                 extracted_at=excluded.extracted_at
@@ -55,7 +55,34 @@ public class SkillWriteRepository : ISkillWriteRepository
         {
             cancellationToken.ThrowIfCancellationRequested();
             using var tx = await conn.BeginTransactionAsync(cancellationToken);
-            await conn.ExecuteAsync(sql, batch, transaction: tx);
+
+            var blobCandidates = new Dictionary<string, BlobAssetCandidate>(StringComparer.Ordinal);
+            var iconKeyByRow = new Dictionary<SkillRow, string?>();
+
+            foreach (var row in batch)
+            {
+                var iconKey = BlobAssetHelper.AddCandidate(row.icon_data, blobCandidates);
+                iconKeyByRow[row] = iconKey;
+            }
+
+            var blobIdMap = await BlobAssetHelper.UpsertAndResolveBlobIdsAsync(
+                conn,
+                tx,
+                blobCandidates.Values,
+                cancellationToken);
+
+            foreach (var row in batch)
+            {
+                row.icon_blob_id = BlobAssetHelper.TryGetBlobId(iconKeyByRow[row], blobIdMap);
+                row.icon_data = null;
+            }
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                sql,
+                batch,
+                transaction: tx,
+                cancellationToken: cancellationToken));
+
             await tx.CommitAsync(cancellationToken);
             written += batch.Count;
             progress?.Report((written, rows.Count));

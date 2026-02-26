@@ -1,9 +1,9 @@
-using MapleItemDB.Core.Models;
+﻿using MapleItemDB.Core.Models;
 
 namespace MapleItemDB.Infrastructure.Repositories.Shared;
 
 /// <summary>
-/// 道具行模型 — 属性名与数据库列名、SQL 参数名对齐
+/// 道具行模型：属性名与数据库列名、SQL 参数名对齐
 /// </summary>
 internal class ItemRow
 {
@@ -34,6 +34,8 @@ internal class ItemRow
     public int? price { get; set; }
     public byte[]? icon_data { get; set; }
     public byte[]? preview_data { get; set; }
+    public int? icon_blob_id { get; set; }
+    public int? preview_blob_id { get; set; }
     public int? setitem_id { get; set; }
     public int? sn { get; set; }
     public int time_limited { get; set; }
@@ -103,6 +105,8 @@ internal class ItemRow
         price = e.Price,
         icon_data = e.IconData,
         preview_data = e.PreviewData,
+        icon_blob_id = null,
+        preview_blob_id = null,
         setitem_id = e.SetItemId,
         sn = e.Sn,
         time_limited = e.TimeLimited ? 1 : 0,

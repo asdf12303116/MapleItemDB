@@ -1,9 +1,9 @@
-using MapleItemDB.Core.Models;
+﻿using MapleItemDB.Core.Models;
 
 namespace MapleItemDB.Infrastructure.Repositories.Shared;
 
 /// <summary>
-/// 技能行模型 — 属性名与数据库列名对齐
+/// 技能行模型：属性名与数据库列名对齐
 /// </summary>
 internal class SkillRow
 {
@@ -13,6 +13,7 @@ internal class SkillRow
     public int job_id { get; set; }
     public int max_level { get; set; }
     public byte[]? icon_data { get; set; }
+    public int? icon_blob_id { get; set; }
     public int is_hidden { get; set; }
     public string? level_effects { get; set; }
     public string? skill_h { get; set; }
@@ -42,6 +43,7 @@ internal class SkillRow
         job_id = e.JobId,
         max_level = e.MaxLevel,
         icon_data = e.IconData,
+        icon_blob_id = null,
         is_hidden = e.IsHidden ? 1 : 0,
         level_effects = e.LevelEffectsJson,
         skill_h = e.SkillH,

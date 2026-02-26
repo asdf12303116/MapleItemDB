@@ -35,6 +35,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDbMigration, Migration004_AddSnColumn>();
         services.AddSingleton<IDbMigration, Migration005_AddTimeLimited>();
         services.AddSingleton<IDbMigration, Migration006_AddReqJob>();
+        services.AddSingleton<IDbMigration, Migration007_SplitBlobAssetsWithHashDedup>();
         services.AddSingleton<MigrationRunner>();
         services.AddSingleton<DatabaseBootstrapper>();
 

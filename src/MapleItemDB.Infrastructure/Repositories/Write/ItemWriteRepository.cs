@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
 using MapleItemDB.Infrastructure.Database;
@@ -9,7 +9,7 @@ using static MapleItemDB.Infrastructure.Repositories.Shared.RepositoryHelper;
 namespace MapleItemDB.Infrastructure.Repositories.Write;
 
 /// <summary>
-/// 道具写仓储 — 批量写入
+/// 道具写仓储：批量写入
 /// </summary>
 public class ItemWriteRepository : IItemWriteRepository
 {
@@ -33,14 +33,14 @@ public class ItemWriteRepository : IItemWriteRepository
                 inc_str, inc_dex, inc_int, inc_luk,
                 inc_pad, inc_mad, inc_pdd, inc_mdd, inc_mhp, inc_mmp,
                 dynamic_stats, consume_spec,
-                is_cash, price, icon_data, preview_data, setitem_id, sn, time_limited, extracted_at
+                is_cash, price, icon_blob_id, preview_blob_id, setitem_id, sn, time_limited, extracted_at
             ) VALUES (
                 @item_id, @name, @description, @category, @sub_category,
                 @req_level, @req_str, @req_dex, @req_int, @req_luk, @req_job,
                 @inc_str, @inc_dex, @inc_int, @inc_luk,
                 @inc_pad, @inc_mad, @inc_pdd, @inc_mdd, @inc_mhp, @inc_mmp,
                 @dynamic_stats, @consume_spec,
-                @is_cash, @price, @icon_data, @preview_data, @setitem_id, @sn, @time_limited, @extracted_at
+                @is_cash, @price, @icon_blob_id, @preview_blob_id, @setitem_id, @sn, @time_limited, @extracted_at
             )
             ON CONFLICT(item_id) DO UPDATE SET
                 name=excluded.name, description=excluded.description,
@@ -55,14 +55,14 @@ public class ItemWriteRepository : IItemWriteRepository
                 inc_mhp=excluded.inc_mhp, inc_mmp=excluded.inc_mmp,
                 dynamic_stats=excluded.dynamic_stats, consume_spec=excluded.consume_spec,
                 is_cash=excluded.is_cash, price=excluded.price,
-                icon_data=excluded.icon_data, preview_data=excluded.preview_data,
+                icon_blob_id=excluded.icon_blob_id, preview_blob_id=excluded.preview_blob_id,
                 setitem_id=excluded.setitem_id, sn=excluded.sn,
                 time_limited=excluded.time_limited,
                 extracted_at=excluded.extracted_at
             """;
 
         var rows = items.Select(ItemRow.FromEntity).ToList();
-        _logger.LogInformation("开始批量写入 {Count} 条记录...", rows.Count);
+        _logger.LogInformation("开始批量写入 {Count} 条道具记录...", rows.Count);
 
         using var conn = _connectionFactory.Create();
         await conn.OpenAsync(cancellationToken);
@@ -73,7 +73,38 @@ public class ItemWriteRepository : IItemWriteRepository
         {
             cancellationToken.ThrowIfCancellationRequested();
             using var tx = await conn.BeginTransactionAsync(cancellationToken);
-            await conn.ExecuteAsync(sql, batch, transaction: tx);
+
+            var blobCandidates = new Dictionary<string, BlobAssetCandidate>(StringComparer.Ordinal);
+            var blobLookupByRow = new Dictionary<ItemRow, (string? IconKey, string? PreviewKey)>();
+
+            foreach (var row in batch)
+            {
+                var iconKey = BlobAssetHelper.AddCandidate(row.icon_data, blobCandidates);
+                var previewKey = BlobAssetHelper.AddCandidate(row.preview_data, blobCandidates);
+                blobLookupByRow[row] = (iconKey, previewKey);
+            }
+
+            var blobIdMap = await BlobAssetHelper.UpsertAndResolveBlobIdsAsync(
+                conn,
+                tx,
+                blobCandidates.Values,
+                cancellationToken);
+
+            foreach (var row in batch)
+            {
+                var keys = blobLookupByRow[row];
+                row.icon_blob_id = BlobAssetHelper.TryGetBlobId(keys.IconKey, blobIdMap);
+                row.preview_blob_id = BlobAssetHelper.TryGetBlobId(keys.PreviewKey, blobIdMap);
+                row.icon_data = null;
+                row.preview_data = null;
+            }
+
+            await conn.ExecuteAsync(new CommandDefinition(
+                sql,
+                batch,
+                transaction: tx,
+                cancellationToken: cancellationToken));
+
             await tx.CommitAsync(cancellationToken);
             written += batch.Count;
             progress?.Report((written, rows.Count));

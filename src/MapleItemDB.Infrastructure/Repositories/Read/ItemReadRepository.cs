@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using Dapper;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
@@ -9,10 +9,50 @@ using Microsoft.Extensions.Logging;
 namespace MapleItemDB.Infrastructure.Repositories.Read;
 
 /// <summary>
-/// 道具读仓储 — 查询与索引
+/// 道具读仓储：查询与索引
 /// </summary>
 public class ItemReadRepository : IItemReadRepository
 {
+    private const string SelectProjection = """
+        SELECT
+            i.item_id,
+            i.name,
+            i.description,
+            i.category,
+            i.sub_category,
+            i.req_level,
+            i.req_str,
+            i.req_dex,
+            i.req_int,
+            i.req_luk,
+            i.req_job,
+            i.inc_str,
+            i.inc_dex,
+            i.inc_int,
+            i.inc_luk,
+            i.inc_pad,
+            i.inc_mad,
+            i.inc_pdd,
+            i.inc_mdd,
+            i.inc_mhp,
+            i.inc_mmp,
+            i.dynamic_stats,
+            i.consume_spec,
+            i.is_cash,
+            i.price,
+            ba_icon.blob_data AS icon_data,
+            ba_preview.blob_data AS preview_data,
+            i.icon_blob_id,
+            i.preview_blob_id,
+            i.setitem_id,
+            i.sn,
+            i.time_limited,
+            i.extracted_at
+        FROM dim_items i
+        LEFT JOIN dim_blob_assets ba_icon ON ba_icon.blob_id = i.icon_blob_id
+        LEFT JOIN dim_blob_assets ba_preview ON ba_preview.blob_id = i.preview_blob_id
+        """;
+
     private readonly SqliteConnectionFactory _connectionFactory;
     private readonly ILogger<ItemReadRepository> _logger;
 
@@ -24,7 +64,7 @@ public class ItemReadRepository : IItemReadRepository
 
     public async Task<ItemEntity?> GetByIdAsync(int itemId)
     {
-        const string sql = "SELECT * FROM dim_items WHERE item_id = @item_id";
+        var sql = $"{SelectProjection} WHERE i.item_id = @item_id";
         using var conn = _connectionFactory.Create();
         var row = await conn.QueryFirstOrDefaultAsync<ItemRow>(sql, new { item_id = itemId });
         return row?.ToEntity();
@@ -32,7 +72,7 @@ public class ItemReadRepository : IItemReadRepository
 
     public async Task<IReadOnlyList<ItemEntity>> SearchByNameAsync(string keyword, int limit = 50)
     {
-        const string sql = "SELECT * FROM dim_items WHERE name LIKE @Keyword LIMIT @Limit";
+        var sql = $"{SelectProjection} WHERE i.name LIKE @Keyword LIMIT @Limit";
         using var conn = _connectionFactory.Create();
         var rows = await conn.QueryAsync<ItemRow>(sql, new { Keyword = $"%{keyword}%", Limit = limit });
         return rows.Select(r => r.ToEntity()).ToList();
@@ -40,51 +80,51 @@ public class ItemReadRepository : IItemReadRepository
 
     public async Task<IReadOnlyList<ItemEntity>> QueryAsync(ItemQueryFilter filter)
     {
-        var sb = new StringBuilder("SELECT * FROM dim_items WHERE 1=1");
+        var sb = new StringBuilder(SelectProjection + " WHERE 1=1");
         var parameters = new DynamicParameters();
 
         if (!string.IsNullOrWhiteSpace(filter.Keyword))
         {
-            sb.Append(" AND (name LIKE @Keyword OR description LIKE @Keyword OR CAST(item_id AS TEXT) LIKE @Keyword)");
+            sb.Append(" AND (i.name LIKE @Keyword OR i.description LIKE @Keyword OR CAST(i.item_id AS TEXT) LIKE @Keyword)");
             parameters.Add("Keyword", $"%{filter.Keyword}%");
         }
         if (filter.Category.HasValue)
         {
-            sb.Append(" AND category = @Category");
+            sb.Append(" AND i.category = @Category");
             parameters.Add("Category", filter.Category.Value.ToString());
         }
         if (!string.IsNullOrWhiteSpace(filter.SubCategory))
         {
-            sb.Append(" AND sub_category = @SubCategory");
+            sb.Append(" AND i.sub_category = @SubCategory");
             parameters.Add("SubCategory", filter.SubCategory);
         }
         if (filter.MinLevel.HasValue)
         {
-            sb.Append(" AND req_level >= @MinLevel");
+            sb.Append(" AND i.req_level >= @MinLevel");
             parameters.Add("MinLevel", filter.MinLevel.Value);
         }
         if (filter.MaxLevel.HasValue)
         {
-            sb.Append(" AND req_level <= @MaxLevel");
+            sb.Append(" AND i.req_level <= @MaxLevel");
             parameters.Add("MaxLevel", filter.MaxLevel.Value);
         }
         if (filter.IsCash.HasValue)
         {
-            sb.Append(" AND is_cash = @IsCash");
+            sb.Append(" AND i.is_cash = @IsCash");
             parameters.Add("IsCash", filter.IsCash.Value ? 1 : 0);
         }
         if (filter.HasSn == true)
         {
-            sb.Append(" AND sn IS NOT NULL");
+            sb.Append(" AND i.sn IS NOT NULL");
         }
         if (filter.MinBossDmg.HasValue)
         {
-            sb.Append(" AND JSON_EXTRACT(dynamic_stats, '$.boss_dmg') >= @MinBossDmg");
+            sb.Append(" AND JSON_EXTRACT(i.dynamic_stats, '$.boss_dmg') >= @MinBossDmg");
             parameters.Add("MinBossDmg", filter.MinBossDmg.Value);
         }
         if (filter.MinIed.HasValue)
         {
-            sb.Append(" AND JSON_EXTRACT(dynamic_stats, '$.ied') >= @MinIed");
+            sb.Append(" AND JSON_EXTRACT(i.dynamic_stats, '$.ied') >= @MinIed");
             parameters.Add("MinIed", filter.MinIed.Value);
         }
 
