@@ -83,6 +83,7 @@ public class GeneralItemExtractor
             Category = category,
             IsCash = infoNode?.GetBoolValue("cash") ?? false,
             Price = infoNode?.GetIntValue("price"),
+            SetItemId = infoNode?.GetIntValue("setItemID"),
             TimeLimited = infoNode?.GetBoolValue("timeLimited") ?? false,
             ExtractedAt = DateTime.UtcNow,
         };
