@@ -2,7 +2,9 @@
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Infrastructure.Cache;
 using MapleItemDB.Infrastructure.Database;
-using MapleItemDB.Infrastructure.Repositories;
+using MapleItemDB.Infrastructure.Database.Migrations;
+using MapleItemDB.Infrastructure.Repositories.Read;
+using MapleItemDB.Infrastructure.Repositories.Write;
 using MapleItemDB.WzExtraction.Services;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
@@ -25,16 +27,26 @@ public static class ServiceCollectionExtensions
         services.AddLogging(configureLogging);
 
         services.AddSingleton(SqliteConnectionFactory.FromFile(databasePath));
+
+        // 数据库迁移
+        services.AddSingleton<IDbMigration, Migration001_AddSetItemId>();
+        services.AddSingleton<IDbMigration, Migration002_AddBlobColumns>();
+        services.AddSingleton<IDbMigration, Migration003_AddSkillColumns>();
+        services.AddSingleton<IDbMigration, Migration004_AddSnColumn>();
+        services.AddSingleton<IDbMigration, Migration005_AddTimeLimited>();
+        services.AddSingleton<IDbMigration, Migration006_AddReqJob>();
+        services.AddSingleton<MigrationRunner>();
         services.AddSingleton<DatabaseBootstrapper>();
 
-        services.AddSingleton<ItemRepository>();
-        services.AddSingleton<IItemRepository>(sp => sp.GetRequiredService<ItemRepository>());
-        services.AddSingleton<IItemReadRepository>(sp => sp.GetRequiredService<ItemRepository>());
-        services.AddSingleton<ISetItemReadRepository>(sp => sp.GetRequiredService<ItemRepository>());
-        services.AddSingleton<ISkillReadRepository>(sp => sp.GetRequiredService<ItemRepository>());
-        services.AddSingleton<IItemWriteRepository>(sp => sp.GetRequiredService<ItemRepository>());
-        services.AddSingleton<ISetItemWriteRepository>(sp => sp.GetRequiredService<ItemRepository>());
-        services.AddSingleton<ISkillWriteRepository>(sp => sp.GetRequiredService<ItemRepository>());
+        // 读仓储
+        services.AddSingleton<IItemReadRepository, ItemReadRepository>();
+        services.AddSingleton<ISetItemReadRepository, SetItemReadRepository>();
+        services.AddSingleton<ISkillReadRepository, SkillReadRepository>();
+
+        // 写仓储
+        services.AddSingleton<IItemWriteRepository, ItemWriteRepository>();
+        services.AddSingleton<ISetItemWriteRepository, SetItemWriteRepository>();
+        services.AddSingleton<ISkillWriteRepository, SkillWriteRepository>();
 
         services.AddSingleton<ISearchIndex, InMemorySearchIndex>();
         services.AddTransient<IWzExtractor, WzExtractionService>();

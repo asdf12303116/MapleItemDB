@@ -1,24 +1,34 @@
-using Microsoft.Data.Sqlite;
+using MapleItemDB.Infrastructure.Database.Migrations;
+using Microsoft.Extensions.Logging;
 
 namespace MapleItemDB.Infrastructure.Database;
 
 /// <summary>
-/// 数据库初始化器 — 创建表结构和索引
+/// 数据库初始化器 — 创建基础表结构 + 执行编号迁移
 /// </summary>
 public class DatabaseBootstrapper
 {
     private readonly SqliteConnectionFactory _connectionFactory;
+    private readonly MigrationRunner _migrationRunner;
+    private readonly ILogger<DatabaseBootstrapper> _logger;
 
-    public DatabaseBootstrapper(SqliteConnectionFactory connectionFactory)
+    public DatabaseBootstrapper(
+        SqliteConnectionFactory connectionFactory,
+        MigrationRunner migrationRunner,
+        ILogger<DatabaseBootstrapper> logger)
     {
         _connectionFactory = connectionFactory;
+        _migrationRunner = migrationRunner;
+        _logger = logger;
     }
 
     /// <summary>
-    /// 确保数据库和表结构已创建
+    /// 确保数据库和表结构已创建，并执行所有未执行的迁移
     /// </summary>
     public async Task EnsureCreatedAsync()
     {
+        _logger.LogInformation("开始初始化数据库...");
+
         using var conn = _connectionFactory.Create();
         await conn.OpenAsync();
 
@@ -26,44 +36,17 @@ public class DatabaseBootstrapper
         cmd.CommandText = Schema;
         await cmd.ExecuteNonQueryAsync();
 
-        // 安全迁移: 添加 set_item_id 列（已存在则忽略）
-        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN setitem_id INTEGER;");
-
-        // 安全迁移: icon_path/preview_path → icon_data/preview_data (BLOB)
-        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN icon_data BLOB;");
-        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN preview_data BLOB;");
-
-        // 安全迁移: dim_skills 新增 skill_h, common_props 列
-        await SafeAddColumnAsync(conn, "ALTER TABLE dim_skills ADD COLUMN skill_h TEXT;");
-        await SafeAddColumnAsync(conn, "ALTER TABLE dim_skills ADD COLUMN common_props TEXT;");
-
-        // 安全迁移: dim_items 新增 sn 列
-        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN sn INTEGER;");
-
-        // 安全迁移: dim_items 新增 time_limited 列
-        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN time_limited INTEGER DEFAULT 0;");
-
-        // 安全迁移: dim_items 新增 req_job 列 (职业需求位掩码)
-        await SafeAddColumnAsync(conn, "ALTER TABLE dim_items ADD COLUMN req_job INTEGER;");
-
         // 启用 WAL 模式 (持久化设置，提升并发读写性能)
         using var walCmd = conn.CreateCommand();
         walCmd.CommandText = "PRAGMA journal_mode=WAL;";
         await walCmd.ExecuteNonQueryAsync();
-    }
 
-    private static async Task SafeAddColumnAsync(Microsoft.Data.Sqlite.SqliteConnection conn, string sql)
-    {
-        try
-        {
-            using var cmd = conn.CreateCommand();
-            cmd.CommandText = sql;
-            await cmd.ExecuteNonQueryAsync();
-        }
-        catch
-        {
-            // 列已存在，忽略错误
-        }
+        _logger.LogInformation("基础表结构已就绪，开始执行迁移...");
+
+        // 执行编号迁移（在独立连接上执行，由 MigrationRunner 管理）
+        await _migrationRunner.RunAsync();
+
+        _logger.LogInformation("数据库初始化完成");
     }
 
     private const string Schema = """
