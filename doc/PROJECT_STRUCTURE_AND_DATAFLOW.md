@@ -91,7 +91,7 @@ maplestory_toolbox/
 │   │   │   └── Migrations/
 │   │   │       ├── IDbMigration.cs          # 迁移接口 (Version/Description/Execute)
 │   │   │       ├── MigrationRunner.cs       # 迁移执行器 (_migrations 表管理)
-│   │   │       └── AllMigrations.cs         # Migration001~006 实现
+│   │   │       └── AllMigrations.cs         # Migration001~007 实现
 │   │   ├── Repositories/
 │   │   │   ├── Read/
 │   │   │   │   ├── ItemReadRepository.cs    # 道具查询 (Dapper)
@@ -103,6 +103,7 @@ maplestory_toolbox/
 │   │   │   │   └── SkillWriteRepository.cs  # 技能批量写入
 │   │   │   └── Shared/
 │   │   │       ├── RepositoryHelper.cs      # PRAGMA 优化 + Chunk 分批
+│   │   │       ├── BlobAssetHelper.cs       # BLOB 哈希去重与ID映射
 │   │   │       ├── ItemRow.cs               # 道具 ORM 行模型
 │   │   │       └── SkillRow.cs              # 技能 ORM 行模型
 │   │   └── Cache/
@@ -164,7 +165,7 @@ maplestory_toolbox/
 | 类别 | 生命周期 | 注册 |
 |------|---------|------|
 | 连接工厂 | Singleton | `SqliteConnectionFactory` |
-| 数据库迁移 | Singleton | `IDbMigration` × 6, `MigrationRunner`, `DatabaseBootstrapper` |
+| 数据库迁移 | Singleton | `IDbMigration` × 7, `MigrationRunner`, `DatabaseBootstrapper` |
 | 读仓储 | Singleton | `IItemReadRepository`, `ISetItemReadRepository`, `ISkillReadRepository` |
 | 写仓储 | Singleton | `IItemWriteRepository`, `ISetItemWriteRepository`, `ISkillWriteRepository` |
 | 搜索索引 | Singleton | `ISearchIndex` → `InMemorySearchIndex` |
@@ -254,7 +255,7 @@ UI 层额外注册 `MainViewModel`（Singleton）和 `MainWindow`（Transient）
 App.xaml.cs
   │ 1. ServiceRegistration.Configure() → AddMapleItemDb() 注册所有服务
   │ 2. DatabaseBootstrapper.EnsureCreatedAsync()
-  │    ├── 创建基础 Schema (dim_items, dim_setitems, dim_skills + 索引)
+  │    ├── 创建基础 Schema (dim_blob_assets, dim_items, dim_setitems, dim_skills + 索引)
   │    ├── 启用 WAL 模式
   │    └── MigrationRunner.RunAsync() — 按编号执行未执行的迁移
   │ 3. MainWindow.Show()
@@ -358,43 +359,57 @@ SelectedItem 变化
 
 ## 数据库 Schema
 
+### dim_blob_assets
+
+```sql
+CREATE TABLE dim_blob_assets (
+    blob_id         INTEGER PRIMARY KEY,
+    content_hash    BLOB NOT NULL,            -- SHA-256 二进制(32字节)
+    content_length  INTEGER NOT NULL,
+    blob_data       BLOB NOT NULL,            -- PNG 二进制
+    created_at      TEXT NOT NULL
+);
+CREATE UNIQUE INDEX idx_blob_hash_len ON dim_blob_assets(content_hash, content_length);
+```
+
 ### dim_items
 
 ```sql
 CREATE TABLE dim_items (
-    item_id       INTEGER PRIMARY KEY,
-    name          TEXT NOT NULL,
-    description   TEXT,
-    category      TEXT NOT NULL,        -- Equip/Consume/Etc/Setup/Cash/Pet
-    sub_category  TEXT,                 -- Weapon/Cap/Coat/SecondWeapon 等
-    req_level     INTEGER,
-    req_str       INTEGER,
-    req_dex       INTEGER,
-    req_int       INTEGER,
-    req_luk       INTEGER,
-    req_job       INTEGER,              -- 职业需求位掩码
-    inc_str       INTEGER,
-    inc_dex       INTEGER,
-    inc_int       INTEGER,
-    inc_luk       INTEGER,
-    inc_pad       INTEGER,
-    inc_mad       INTEGER,
-    inc_pdd       INTEGER,
-    inc_mdd       INTEGER,
-    inc_mhp       INTEGER,
-    inc_mmp       INTEGER,
-    dynamic_stats TEXT,                 -- JSON: boss_dmg, ied, total_dmg, 标志位等
-    consume_spec  TEXT,                 -- JSON: 消耗品效果
-    is_cash       INTEGER DEFAULT 0,
-    price         INTEGER,
-    icon_data     BLOB,                 -- PNG 二进制
-    preview_data  BLOB,                 -- PNG 二进制
-    setitem_id    INTEGER,
-    sn            INTEGER,
-    time_limited  INTEGER DEFAULT 0,
-    extracted_at  TEXT NOT NULL
+    item_id          INTEGER PRIMARY KEY,
+    name             TEXT NOT NULL,
+    description      TEXT,
+    category         TEXT NOT NULL,        -- Equip/Consume/Etc/Setup/Cash/Pet
+    sub_category     TEXT,                 -- Weapon/Cap/Coat/SecondWeapon 等
+    req_level        INTEGER,
+    req_str          INTEGER,
+    req_dex          INTEGER,
+    req_int          INTEGER,
+    req_luk          INTEGER,
+    req_job          INTEGER,              -- 职业需求位掩码
+    inc_str          INTEGER,
+    inc_dex          INTEGER,
+    inc_int          INTEGER,
+    inc_luk          INTEGER,
+    inc_pad          INTEGER,
+    inc_mad          INTEGER,
+    inc_pdd          INTEGER,
+    inc_mdd          INTEGER,
+    inc_mhp          INTEGER,
+    inc_mmp          INTEGER,
+    dynamic_stats    TEXT,                 -- JSON: boss_dmg, ied, total_dmg, 标志位等
+    consume_spec     TEXT,                 -- JSON: 消耗品效果
+    is_cash          INTEGER DEFAULT 0,
+    price            INTEGER,
+    icon_blob_id     INTEGER,              -- 外键 -> dim_blob_assets.blob_id
+    preview_blob_id  INTEGER,              -- 外键 -> dim_blob_assets.blob_id
+    setitem_id       INTEGER,
+    sn               INTEGER,
+    time_limited     INTEGER DEFAULT 0,
+    extracted_at     TEXT NOT NULL
 );
--- 索引: idx_items_name, idx_items_category, idx_items_cash
+-- 索引: idx_items_name, idx_items_category, idx_items_cash,
+--      idx_items_icon_blob_id, idx_items_preview_blob_id
 ```
 
 ### dim_setitems
@@ -416,14 +431,14 @@ CREATE TABLE dim_skills (
     description    TEXT,
     job_id         INTEGER NOT NULL,
     max_level      INTEGER DEFAULT 0,
-    icon_data      BLOB,                -- PNG 二进制
+    icon_blob_id   INTEGER,               -- 外键 -> dim_blob_assets.blob_id
     is_hidden      INTEGER DEFAULT 0,
-    level_effects  TEXT,                -- JSON: 各等级效果
-    skill_h        TEXT,                -- 等级效果描述模板
-    common_props   TEXT,                -- JSON: common 属性公式字典
+    level_effects  TEXT,                  -- JSON: 各等级效果
+    skill_h        TEXT,                  -- 等级效果描述模板
+    common_props   TEXT,                  -- JSON: common 属性公式字典
     extracted_at   TEXT NOT NULL
 );
--- 索引: idx_skills_name, idx_skills_job
+-- 索引: idx_skills_name, idx_skills_job, idx_skills_icon_blob_id
 ```
 
 ### _migrations
@@ -448,6 +463,7 @@ CREATE TABLE _migrations (
 | 004 | dim_items 新增 sn | `ADD COLUMN sn INTEGER` |
 | 005 | dim_items 新增 time_limited | `ADD COLUMN time_limited INTEGER DEFAULT 0` |
 | 006 | dim_items 新增 req_job | `ADD COLUMN req_job INTEGER` |
+| 007 | BLOB 拆分+哈希去重 | 重建 `dim_items/dim_skills`，新增 `dim_blob_assets`，主表保存 blob_id |
 
 ## CLI 测试工具 (mapleidb)
 
@@ -512,3 +528,4 @@ dotnet run --project src/MapleItemDB.Cli -- skill 终极攻击 --limit 10
 dotnet run --project src/MapleItemDB.Cli -- get 1572000
 dotnet run --project src/MapleItemDB.Cli -- extract --wz D:\GAME\MapleStory228\Data
 ```
+

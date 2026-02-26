@@ -1,4 +1,4 @@
-using Dapper;
+﻿using Dapper;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
 using MapleItemDB.Infrastructure.Database;
@@ -12,6 +12,24 @@ namespace MapleItemDB.Infrastructure.Repositories.Read;
 /// </summary>
 public class SkillReadRepository : ISkillReadRepository
 {
+    private const string SelectProjection = """
+        SELECT
+            s.skill_id,
+            s.name,
+            s.description,
+            s.job_id,
+            s.max_level,
+            ba_icon.blob_data AS icon_data,
+            s.icon_blob_id,
+            s.is_hidden,
+            s.level_effects,
+            s.skill_h,
+            s.common_props,
+            s.extracted_at
+        FROM dim_skills s
+        LEFT JOIN dim_blob_assets ba_icon ON ba_icon.blob_id = s.icon_blob_id
+        """;
+
     private readonly SqliteConnectionFactory _connectionFactory;
     private readonly ILogger<SkillReadRepository> _logger;
 
@@ -28,15 +46,15 @@ public class SkillReadRepository : ISkillReadRepository
         if (string.IsNullOrWhiteSpace(keyword))
         {
             var sql = limit > 0
-                ? "SELECT * FROM dim_skills WHERE is_hidden = 0 LIMIT @Limit"
-                : "SELECT * FROM dim_skills WHERE is_hidden = 0";
+                ? $"{SelectProjection} WHERE s.is_hidden = 0 LIMIT @Limit"
+                : $"{SelectProjection} WHERE s.is_hidden = 0";
             rows = await conn.QueryAsync<SkillRow>(sql, new { Limit = limit });
         }
         else
         {
             var sql = limit > 0
-                ? "SELECT * FROM dim_skills WHERE (name LIKE @Keyword OR description LIKE @Keyword) LIMIT @Limit"
-                : "SELECT * FROM dim_skills WHERE (name LIKE @Keyword OR description LIKE @Keyword)";
+                ? $"{SelectProjection} WHERE (s.name LIKE @Keyword OR s.description LIKE @Keyword) LIMIT @Limit"
+                : $"{SelectProjection} WHERE (s.name LIKE @Keyword OR s.description LIKE @Keyword)";
             rows = await conn.QueryAsync<SkillRow>(sql, new { Keyword = $"%{keyword}%", Limit = limit });
         }
         return rows.Select(r => r.ToEntity()).ToList();
