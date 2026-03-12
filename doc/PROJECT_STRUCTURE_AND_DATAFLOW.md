@@ -1,4 +1,4 @@
-﻿# MapleItemDB 项目结构与核心数据流
+# MapleItemDB 项目结构与核心数据流
 
 ## 架构总览
 
@@ -41,6 +41,7 @@ maplestory_toolbox/
 │   │   ├── Interfaces/
 │   │   │   ├── IItemReadRepository.cs       # 道具读仓储接口
 │   │   │   ├── IItemWriteRepository.cs      # 道具写仓储接口
+│   │   │   ├── IItemSnRepository.cs         # SN 映射读写/回填接口
 │   │   │   ├── ISetItemReadRepository.cs    # 套装读仓储接口
 │   │   │   ├── ISetItemWriteRepository.cs   # 套装写仓储接口
 │   │   │   ├── ISkillReadRepository.cs      # 技能读仓储接口
@@ -57,12 +58,13 @@ maplestory_toolbox/
 │   │   │   ├── ItemQueryFilter.cs           # 查询筛选条件
 │   │   │   └── StatsLine.cs                 # 属性行 (UI 展示用)
 │   │   └── Data/
-│   │       └── SnMap.cs                     # SN 映射表 (嵌入资源)
+│   │       └── SnMap.cs                     # 历史 SN 嵌入映射（已不作为主流程来源）
 │   │
 │   ├── MapleItemDB.Application/             # 用例编排层
 │   │   ├── Contracts/                       # DTO / 请求-响应模型
 │   │   │   ├── SearchContracts.cs           # SearchRequest, SearchResult
 │   │   │   ├── ExtractImportContracts.cs    # ExtractImportRequest, ExtractImportResult
+│   │   │   ├── UpdateSnDataContracts.cs     # UpdateSnDataRequest, UpdateSnDataResult
 │   │   │   ├── ItemDetailResult.cs          # 道具详情结果
 │   │   │   ├── ItemLookupResult.cs          # 道具查找结果
 │   │   │   ├── DatabaseStatsResult.cs       # 数据库统计结果
@@ -70,6 +72,8 @@ maplestory_toolbox/
 │   │   └── UseCases/                        # 用例接口与实现
 │   │       ├── IExtractAndImportUseCase.cs  # 提取+导入+索引刷新
 │   │       ├── ExtractAndImportUseCase.cs
+│   │       ├── IUpdateSnDataUseCase.cs      # SN 文件导入+回填
+│   │       ├── UpdateSnDataUseCase.cs
 │   │       ├── IInitializeCatalogUseCase.cs # 初始化搜索索引+套装缓存
 │   │       ├── InitializeCatalogUseCase.cs
 │   │       ├── ISearchItemsUseCase.cs       # 道具搜索 (含技能转道具)
@@ -91,7 +95,7 @@ maplestory_toolbox/
 │   │   │   └── Migrations/
 │   │   │       ├── IDbMigration.cs          # 迁移接口 (Version/Description/Execute)
 │   │   │       ├── MigrationRunner.cs       # 迁移执行器 (_migrations 表管理)
-│   │   │       └── AllMigrations.cs         # Migration001~007 实现
+│   │   │       └── AllMigrations.cs         # Migration001~008 实现
 │   │   ├── Repositories/
 │   │   │   ├── Read/
 │   │   │   │   ├── ItemReadRepository.cs    # 道具查询 (Dapper)
@@ -100,7 +104,8 @@ maplestory_toolbox/
 │   │   │   ├── Write/
 │   │   │   │   ├── ItemWriteRepository.cs   # 道具批量写入
 │   │   │   │   ├── SetItemWriteRepository.cs# 套装批量写入
-│   │   │   │   └── SkillWriteRepository.cs  # 技能批量写入
+│   │   │   │   ├── SkillWriteRepository.cs  # 技能批量写入
+│   │   │   │   └── ItemSnRepository.cs      # SN 映射表写入/回填
 │   │   │   └── Shared/
 │   │   │       ├── RepositoryHelper.cs      # PRAGMA 优化 + Chunk 分批
 │   │   │       ├── BlobAssetHelper.cs       # BLOB 哈希去重与ID映射
@@ -141,8 +146,9 @@ maplestory_toolbox/
 ├── tests/WzLoadTest/                        # 手动验证 WZ 提取流程
 ├── lib/WzComparerR2/                        # WZ 解析依赖库
 └── data/                                    # 数据资源
-    ├── sn_map.json                          # SN 映射表
+    ├── sn_map.json                          # 历史 SN 映射
     ├── sn.txt                               # SN 原始数据
+    ├── raw-SN.txt                           # 商城 SN 源数据（文本）
     └── convert_sn.ps1                       # SN 转换脚本
 ```
 
@@ -165,12 +171,12 @@ maplestory_toolbox/
 | 类别 | 生命周期 | 注册 |
 |------|---------|------|
 | 连接工厂 | Singleton | `SqliteConnectionFactory` |
-| 数据库迁移 | Singleton | `IDbMigration` × 7, `MigrationRunner`, `DatabaseBootstrapper` |
+| 数据库迁移 | Singleton | `IDbMigration` × 8, `MigrationRunner`, `DatabaseBootstrapper` |
 | 读仓储 | Singleton | `IItemReadRepository`, `ISetItemReadRepository`, `ISkillReadRepository` |
-| 写仓储 | Singleton | `IItemWriteRepository`, `ISetItemWriteRepository`, `ISkillWriteRepository` |
+| 写仓储 | Singleton | `IItemWriteRepository`, `ISetItemWriteRepository`, `ISkillWriteRepository`, `IItemSnRepository` |
 | 搜索索引 | Singleton | `ISearchIndex` → `InMemorySearchIndex` |
 | WZ 提取器 | Transient | `IWzExtractor` → `WzExtractionService` |
-| 用例 | Transient | 7 个用例接口 → 实现类 |
+| 用例 | Transient | 8 个用例接口 → 实现类 |
 
 UI 层额外注册 `MainViewModel`（Singleton）和 `MainWindow`（Transient）。
 
@@ -239,7 +245,8 @@ UI 层额外注册 `MainViewModel`（Singleton）和 `MainWindow`（Transient）
 
 | 用例 | 职责 | 依赖 |
 |------|------|------|
-| `IExtractAndImportUseCase` | WZ 提取 → 写库 → 索引刷新 | IWzExtractor + 6 个写/读仓储 |
+| `IExtractAndImportUseCase` | WZ 提取 → 应用 SN 映射 → 写库 → 索引刷新 | IWzExtractor + `IItemSnRepository` + 6 个写/读仓储 |
+| `IUpdateSnDataUseCase` | 解析 SN 文本文件 → 全量覆盖 `dim_item_sn_map` → 回填 `dim_items.sn` | `IItemSnRepository` |
 | `IInitializeCatalogUseCase` | 启动时预加载 ID-Name 索引与套装缓存 | IItemReadRepository + ISetItemReadRepository |
 | `ISearchItemsUseCase` | 组合条件搜索道具（含技能转道具） | IItemReadRepository + ISkillReadRepository |
 | `ISearchSkillsUseCase` | 技能名称搜索 | ISkillReadRepository |
@@ -255,7 +262,7 @@ UI 层额外注册 `MainViewModel`（Singleton）和 `MainWindow`（Transient）
 App.xaml.cs
   │ 1. ServiceRegistration.Configure() → AddMapleItemDb() 注册所有服务
   │ 2. DatabaseBootstrapper.EnsureCreatedAsync()
-  │    ├── 创建基础 Schema (dim_blob_assets, dim_items, dim_setitems, dim_skills + 索引)
+  │    ├── 创建基础 Schema (dim_blob_assets, dim_items, dim_item_sn_map, dim_setitems, dim_skills + 索引)
   │    ├── 启用 WAL 模式
   │    └── MigrationRunner.RunAsync() — 按编号执行未执行的迁移
   │ 3. MainWindow.Show()
@@ -270,7 +277,7 @@ App.xaml.cs
 ### 2. WZ 数据提取与导入
 
 ```
-UI: ExtractDataCommand / CLI: extract
+UI: 更新wz数据按钮 / CLI: extract
   └── IExtractAndImportUseCase.ExecuteAsync(ExtractImportRequest)
       │
       ├── 1. IWzExtractor.ExtractAllAsync(gameDirectory, progress)
@@ -280,15 +287,29 @@ UI: ExtractDataCommand / CLI: extract
       │      ├── GeneralItemExtractor — 通用道具提取
       │      ├── SetItemExtractor — 套装提取
       │      ├── SkillExtractor — 技能提取
-      │      ├── IconExporter — 图标/预览图导出
-      │      └── SnMap — 填充商城 SN 编号
+      │      └── IconExporter — 图标/预览图导出
       │
-      ├── 2. IItemWriteRepository.BulkUpsertAsync() — 道具写入 (1000行/批)
-      ├── 3. ISetItemWriteRepository.BulkUpsertSetItemsAsync() — 套装写入
-      ├── 4. ISkillWriteRepository.BulkUpsertSkillsAsync() — 技能写入 (500行/批)
+      ├── 2. IItemSnRepository.GetLookupAsync() — 读取最新 SN 映射并填充 item.Sn
+      ├── 3. IItemWriteRepository.BulkUpsertAsync() — 道具写入 (1000行/批)
+      ├── 4. ISetItemWriteRepository.BulkUpsertSetItemsAsync() — 套装写入
+      ├── 5. ISkillWriteRepository.BulkUpsertSkillsAsync() — 技能写入 (500行/批)
       │
-      └── 5. 返回 ExtractImportResult (Bundle + SearchIndex + SetItems)
+      └── 6. 返回 ExtractImportResult (Bundle + SearchIndex + SetItems)
            └── UI/CLI 刷新内存索引与套装缓存
+```
+
+### 3. SN 文件导入与回填
+
+```
+UI: 更新SN数据按钮 / CLI: update-sn --file <path>
+  └── IUpdateSnDataUseCase.ExecuteAsync(UpdateSnDataRequest)
+      ├── 1. 解析 raw-SN.txt 风格文本 (提取 SN + ItemId)
+      ├── 2. 仅保留 9 开头 SN
+      ├── 3. 同一 ItemId 多条时按文件顺序后值覆盖前值
+      ├── 4. IItemSnRepository.ReplaceAllAsync() 全量覆盖 dim_item_sn_map
+      └── 5. IItemSnRepository.ApplyToItemsAsync() 回填 dim_items.sn
+           ├── 先将 dim_items.sn 全部置空
+           └── 再按映射更新命中 ItemId
 ```
 
 写入优化策略：
@@ -296,7 +317,7 @@ UI: ExtractDataCommand / CLI: extract
 - **PRAGMA 优化**：写入期间 `synchronous=NORMAL` / `cache_size=-64000` / `temp_store=MEMORY`，完成后恢复
 - **WAL 模式**：`DatabaseBootstrapper` 中启用，持久化设置
 
-### 3. 提取进度映射
+### 4. 提取进度映射
 
 | 阶段 | 进度区间 | 说明 |
 |------|---------|------|
@@ -311,7 +332,7 @@ UI: ExtractDataCommand / CLI: extract
 | 写入技能 | 95% ~ 97% | dim_skills 分批写入 |
 | 刷新索引 | 97% ~ 100% | 内存索引 + 套装缓存重载 |
 
-### 4. 搜索与展示
+### 5. 搜索与展示
 
 ```
 UI: SearchCommand / CLI: search
@@ -327,7 +348,7 @@ UI 自动补全:
   SearchText 变化 → ISearchIndex.Search(keyword, 20) → 毫秒级匹配
 ```
 
-### 5. 详情展示
+### 6. 详情展示
 
 ```
 SelectedItem 变化
@@ -349,7 +370,7 @@ SelectedItem 变化
       └── 返回 ItemDetailResult { FormattedStats, SetItemDisplayText, SkillDetailText, ... }
 ```
 
-### 6. 缓存策略
+### 7. 缓存策略
 
 | 缓存 | 位置 | 说明 |
 |------|------|------|
@@ -412,6 +433,16 @@ CREATE TABLE dim_items (
 --      idx_items_icon_blob_id, idx_items_preview_blob_id
 ```
 
+### dim_item_sn_map
+
+```sql
+CREATE TABLE dim_item_sn_map (
+    item_id       INTEGER PRIMARY KEY,
+    sn            INTEGER NOT NULL
+);
+CREATE INDEX idx_item_sn_map_sn ON dim_item_sn_map(sn);
+```
+
 ### dim_setitems
 
 ```sql
@@ -464,6 +495,7 @@ CREATE TABLE _migrations (
 | 005 | dim_items 新增 time_limited | `ADD COLUMN time_limited INTEGER DEFAULT 0` |
 | 006 | dim_items 新增 req_job | `ADD COLUMN req_job INTEGER` |
 | 007 | BLOB 拆分+哈希去重 | 重建 `dim_items/dim_skills`，新增 `dim_blob_assets`，主表保存 blob_id |
+| 008 | 新增独立 SN 映射表 | `CREATE TABLE dim_item_sn_map (item_id INTEGER PRIMARY KEY, sn INTEGER NOT NULL)` |
 
 ## CLI 测试工具 (mapleidb)
 
@@ -479,6 +511,9 @@ CREATE TABLE _migrations (
 ```
 mapleidb extract [--wz <dir>] [--db <path>]
   → IExtractAndImportUseCase.ExecuteAsync()
+
+mapleidb update-sn --file <path> [--db <path>]
+  → IUpdateSnDataUseCase.ExecuteAsync()
 
 mapleidb search [keyword] [options] [--db <path>]
   → ISearchItemsUseCase.ExecuteAsync(SearchRequest)
@@ -523,9 +558,9 @@ mapleidb stats [--db <path>]
 
 ```bash
 dotnet run --project src/MapleItemDB.Cli -- stats
+dotnet run --project src/MapleItemDB.Cli -- update-sn --file data/raw-SN.txt
 dotnet run --project src/MapleItemDB.Cli -- search 阿比斯 --category Equip --min-level 200
 dotnet run --project src/MapleItemDB.Cli -- skill 终极攻击 --limit 10
 dotnet run --project src/MapleItemDB.Cli -- get 1572000
 dotnet run --project src/MapleItemDB.Cli -- extract --wz D:\GAME\MapleStory228\Data
 ```
-

@@ -1,4 +1,4 @@
-﻿using System.Text;
+using System.Text;
 using System.Text.Json;
 using System.Text.Json.Serialization;
 using MapleItemDB.Application.Contracts;
@@ -30,6 +30,7 @@ try
         "skill" => await RunSkillAsync(commandArgs),
         "get" => await RunGetAsync(commandArgs),
         "stats" => await RunStatsAsync(commandArgs),
+        "update-sn" => await RunUpdateSnAsync(commandArgs),
         _ => PrintUnknownCommand(command),
     };
 }
@@ -315,6 +316,51 @@ static async Task<int> RunStatsAsync(string[] args)
     return 0;
 }
 
+static async Task<int> RunUpdateSnAsync(string[] args)
+{
+    string? sourceFile = null;
+    string? dbPath = null;
+    var showHelp = false;
+
+    for (var i = 0; i < args.Length; i++)
+    {
+        switch (args[i])
+        {
+            case "-h" or "--help": showHelp = true; break;
+            case "--db": dbPath = NextArg(args, ref i, "--db"); break;
+            case "--file": sourceFile = NextArg(args, ref i, "--file"); break;
+            default: throw new ArgumentException($"未知参数: {args[i]}");
+        }
+    }
+
+    if (showHelp)
+    {
+        Console.WriteLine("用法: mapleidb update-sn --file <path> [--db <path>]");
+        Console.WriteLine();
+        Console.WriteLine("导入 SN 映射并回填到 dim_items.sn。仅保留 9 开头 SN。");
+        Console.WriteLine();
+        Console.WriteLine("选项:");
+        Console.WriteLine("  --file <path>  SN 源文件路径 (raw-SN.txt 格式)");
+        Console.WriteLine($"  --db <path>    数据库路径 (默认 {CliConfig.DefaultDbPath})");
+        return 0;
+    }
+
+    if (string.IsNullOrWhiteSpace(sourceFile))
+        throw new ArgumentException("缺少 --file 参数。");
+
+    using var provider = BuildServiceProvider(dbPath);
+    await EnsureDatabaseAsync(provider);
+
+    var useCase = provider.GetRequiredService<IUpdateSnDataUseCase>();
+    var result = await useCase.ExecuteAsync(new UpdateSnDataRequest
+    {
+        SourceFilePath = sourceFile,
+    });
+
+    PrintJson(result);
+    return 0;
+}
+
 // ========== 辅助方法 ==========
 
 static void PrintGlobalHelp()
@@ -329,6 +375,7 @@ static void PrintGlobalHelp()
     Console.WriteLine("  skill     技能查询");
     Console.WriteLine("  get       按 ID 查询道具详情");
     Console.WriteLine("  stats     数据库统计");
+    Console.WriteLine("  update-sn 导入并回填 SN 数据");
     Console.WriteLine();
     Console.WriteLine("全局选项:");
     Console.WriteLine($"  --db <path>  数据库路径 (默认 {CliConfig.DefaultDbPath})");
@@ -342,6 +389,7 @@ static void PrintGlobalHelp()
     Console.WriteLine("  mapleidb skill 终极攻击 --limit 10");
     Console.WriteLine("  mapleidb get 1572000");
     Console.WriteLine("  mapleidb stats");
+    Console.WriteLine("  mapleidb update-sn --file data/raw-SN.txt");
 }
 
 static int PrintUnknownCommand(string command)

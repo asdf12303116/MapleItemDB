@@ -273,13 +273,17 @@
                        Margin="4,0,0,0"
                        MinWidth="36"/>
 
-            <!-- 更新数据按钮 (右下角) -->
-            <Button Grid.Column="3"
-                    Content="更新数据"
-                    Margin="8,0,0,0"
-                    Padding="12,4"
-                    Click="OnExtractClick"
-                    IsEnabled="{Binding IsExtracting, Converter={StaticResource InvertBoolConverter}}"/>
+            <StackPanel Grid.Column="3" Orientation="Horizontal" Margin="8,0,0,0">
+                <Button Content="更新wz数据"
+                        Padding="12,4"
+                        Margin="0,0,8,0"
+                        Click="OnExtractClick"
+                        IsEnabled="{Binding IsExtracting, Converter={StaticResource InvertBoolConverter}}"/>
+                <Button Content="更新SN数据"
+                        Padding="12,4"
+                        Click="OnUpdateSnClick"
+                        IsEnabled="{Binding IsExtracting, Converter={StaticResource InvertBoolConverter}}"/>
+            </StackPanel>
         </Grid>
     </Grid>
 </Window>

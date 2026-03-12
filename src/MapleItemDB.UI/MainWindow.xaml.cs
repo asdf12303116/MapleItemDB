@@ -53,8 +53,8 @@ public partial class MainWindow : Window
     private async void OnExtractClick(object sender, RoutedEventArgs e)
     {
         var confirm = MessageBox.Show(
-            "更新数据将从游戏目录重新提取所有信息，覆盖现有数据。\n确定要继续吗？",
-            "确认更新数据",
+            "更新wz数据将从游戏目录重新提取所有信息，覆盖现有数据。\n确定要继续吗？",
+            "确认更新wz数据",
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
 
@@ -69,6 +69,30 @@ public partial class MainWindow : Window
         {
             var vm = (MainViewModel)DataContext;
             await vm.ExtractDataCommand.ExecuteAsync(dialog.FolderName);
+        }
+    }
+
+    private async void OnUpdateSnClick(object sender, RoutedEventArgs e)
+    {
+        var confirm = MessageBox.Show(
+            "更新SN数据将导入新的 SN 映射，并立即回填到现有道具数据。\n确定要继续吗？",
+            "确认更新SN数据",
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+
+        if (confirm != MessageBoxResult.Yes) return;
+
+        var dialog = new OpenFileDialog
+        {
+            Title = "选择 SN 数据文件",
+            Filter = "SN 文本文件 (*.txt)|*.txt|所有文件 (*.*)|*.*",
+            CheckFileExists = true,
+        };
+
+        if (dialog.ShowDialog() == true)
+        {
+            var vm = (MainViewModel)DataContext;
+            await vm.UpdateSnDataCommand.ExecuteAsync(dialog.FileName);
         }
     }
 }

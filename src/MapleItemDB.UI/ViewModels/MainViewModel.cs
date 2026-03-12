@@ -34,6 +34,7 @@ public partial class MainViewModel : ObservableObject
     private readonly IGetItemByIdUseCase _getItemByIdUseCase;
     private readonly IGetItemDetailUseCase _getItemDetailUseCase;
     private readonly IExtractAndImportUseCase _extractAndImportUseCase;
+    private readonly IUpdateSnDataUseCase _updateSnDataUseCase;
     private readonly ISearchIndex _searchIndex;
     private readonly ILogger<MainViewModel> _logger;
 
@@ -212,6 +213,7 @@ public partial class MainViewModel : ObservableObject
         IGetItemByIdUseCase getItemByIdUseCase,
         IGetItemDetailUseCase getItemDetailUseCase,
         IExtractAndImportUseCase extractAndImportUseCase,
+        IUpdateSnDataUseCase updateSnDataUseCase,
         ISearchIndex searchIndex,
         ILogger<MainViewModel> logger)
     {
@@ -220,6 +222,7 @@ public partial class MainViewModel : ObservableObject
         _getItemByIdUseCase = getItemByIdUseCase;
         _getItemDetailUseCase = getItemDetailUseCase;
         _extractAndImportUseCase = extractAndImportUseCase;
+        _updateSnDataUseCase = updateSnDataUseCase;
         _searchIndex = searchIndex;
         _logger = logger;
         _selectedCategoryOption = CategoryOptions[0];
@@ -501,6 +504,34 @@ public partial class MainViewModel : ObservableObject
         {
             IsExtracting = false;
             ExtractionProgress = 0;
+        }
+    }
+
+    [RelayCommand]
+    private async Task UpdateSnDataAsync(string sourceFilePath)
+    {
+        if (string.IsNullOrWhiteSpace(sourceFilePath))
+            return;
+
+        StatusText = "正在更新 SN 数据...";
+
+        try
+        {
+            var result = await _updateSnDataUseCase.ExecuteAsync(new UpdateSnDataRequest
+            {
+                SourceFilePath = sourceFilePath,
+            });
+
+            StatusText = $"SN 更新完成 — 映射 {result.SavedPairs} 条, 回填 {result.UpdatedItemRows} 条道具";
+
+            // 若已加载索引，刷新当前搜索结果以显示最新 SN
+            if (!string.IsNullOrWhiteSpace(SearchText) || SearchResults.Count > 0)
+                await SearchAsync();
+        }
+        catch (Exception ex)
+        {
+            StatusText = $"SN 更新失败: {ex.Message}";
+            _logger.LogError(ex, "更新 SN 数据失败");
         }
     }
 }
