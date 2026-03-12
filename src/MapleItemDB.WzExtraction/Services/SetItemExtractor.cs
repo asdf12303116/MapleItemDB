@@ -9,11 +9,11 @@ namespace MapleItemDB.WzExtraction.Services;
 /// </summary>
 public class SetItemExtractor
 {
-    private readonly IReadOnlyDictionary<int, StringPoolBuilder.StringEntry>? _stringPool;
+    private readonly IReadOnlyDictionary<int, StringPoolBuilder.StringEntry>? _skillStringPool;
 
-    public SetItemExtractor(IReadOnlyDictionary<int, StringPoolBuilder.StringEntry>? stringPool = null)
+    public SetItemExtractor(IReadOnlyDictionary<int, StringPoolBuilder.StringEntry>? skillStringPool = null)
     {
-        _stringPool = stringPool;
+        _skillStringPool = skillStringPool;
     }
 
     /// <summary>
@@ -265,7 +265,7 @@ public class SetItemExtractor
             {
                 string? skillName = null;
                 string? skillDesc = null;
-                if (_stringPool != null && _stringPool.TryGetValue(skillId.Value, out var entry))
+                if (_skillStringPool != null && _skillStringPool.TryGetValue(skillId.Value, out var entry))
                 {
                     skillName = entry.Name;
                     skillDesc = entry.Description;

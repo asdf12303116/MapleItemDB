@@ -12,11 +12,11 @@ namespace MapleItemDB.WzExtraction.Services;
 /// </summary>
 public class SkillExtractor
 {
-    private readonly IReadOnlyDictionary<int, StringPoolBuilder.StringEntry> _stringPool;
+    private readonly IReadOnlyDictionary<int, StringPoolBuilder.StringEntry> _skillStringPool;
 
-    public SkillExtractor(IReadOnlyDictionary<int, StringPoolBuilder.StringEntry> stringPool)
+    public SkillExtractor(IReadOnlyDictionary<int, StringPoolBuilder.StringEntry> skillStringPool)
     {
-        _stringPool = stringPool;
+        _skillStringPool = skillStringPool;
     }
 
     /// <summary>
@@ -79,8 +79,8 @@ public class SkillExtractor
                 if (!int.TryParse(skillIdNode.Text, out var skillId))
                     continue;
 
-                // 从字符串池获取名称，跳过无名技能
-                if (!_stringPool.TryGetValue(skillId, out var entry) || string.IsNullOrEmpty(entry.Name))
+                // 从技能字符串池获取名称，跳过无名技能
+                if (!_skillStringPool.TryGetValue(skillId, out var entry) || string.IsNullOrEmpty(entry.Name))
                     continue;
 
                 // 优先从 common 子节点读取 maxLevel

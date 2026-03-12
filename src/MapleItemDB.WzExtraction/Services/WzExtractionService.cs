@@ -52,12 +52,16 @@ public class WzExtractionService : IWzExtractor, IDisposable
 
         var stringPoolBuilder = new StringPoolBuilder();
         stringPoolBuilder.Build(stringNode);
-        _logger.LogInformation("字符串池: {Count} 个条目", stringPoolBuilder.Pool.Count);
-        progress?.Report(new ExtractionProgress("构建字符串池", 1, 1, $"已解析 {stringPoolBuilder.Pool.Count} 个字符串条目"));
+        var totalStringEntries = stringPoolBuilder.ItemPool.Count + stringPoolBuilder.SkillPool.Count;
+        _logger.LogInformation(
+            "字符串池: 道具 {ItemCount} 个, 技能 {SkillCount} 个",
+            stringPoolBuilder.ItemPool.Count,
+            stringPoolBuilder.SkillPool.Count);
+        progress?.Report(new ExtractionProgress("构建字符串池", 1, 1, $"已解析 {totalStringEntries} 个字符串条目"));
         ct.ThrowIfCancellationRequested();
 
-        // 3. 创建宏变量解析器
-        var macroResolver = new MacroResolver(stringPoolBuilder.Pool);
+        // 3. 创建宏变量解析器（仅道具字符串池）
+        var macroResolver = new MacroResolver(stringPoolBuilder.ItemPool);
 
         // 4. 提取装备 (Character)
         _logger.LogInformation("开始提取装备 (Character)...");
@@ -122,7 +126,7 @@ public class WzExtractionService : IWzExtractor, IDisposable
         // 6. 提取套装信息
         _logger.LogInformation("开始提取套装信息...");
         progress?.Report(new ExtractionProgress("提取套装", 0, 1, "正在解析 SetItemInfo..."));
-        var setItemExtractor = new SetItemExtractor(stringPoolBuilder.Pool);
+        var setItemExtractor = new SetItemExtractor(stringPoolBuilder.SkillPool);
         var setItems = setItemExtractor.Extract(wzRoot);
         _logger.LogInformation("套装提取完成: {Count} 个套装", setItems.Count);
         progress?.Report(new ExtractionProgress("提取套装", 1, 1, $"已提取 {setItems.Count} 个套装"));
@@ -130,7 +134,7 @@ public class WzExtractionService : IWzExtractor, IDisposable
         // 7. 提取技能
         _logger.LogInformation("开始提取技能...");
         progress?.Report(new ExtractionProgress("提取技能", 0, 1, "正在解析 Skill..."));
-        var skillExtractor = new SkillExtractor(stringPoolBuilder.Pool);
+        var skillExtractor = new SkillExtractor(stringPoolBuilder.SkillPool);
         var skills = skillExtractor.Extract(wzRoot, progress, ct);
         _logger.LogInformation("技能提取完成: {Count} 个技能", skills.Count);
 
