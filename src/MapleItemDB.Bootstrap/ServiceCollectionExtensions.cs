@@ -1,4 +1,4 @@
-﻿using MapleItemDB.Application.UseCases;
+using MapleItemDB.Application.UseCases;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Infrastructure.Cache;
 using MapleItemDB.Infrastructure.Database;
@@ -36,6 +36,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IDbMigration, Migration005_AddTimeLimited>();
         services.AddSingleton<IDbMigration, Migration006_AddReqJob>();
         services.AddSingleton<IDbMigration, Migration007_SplitBlobAssetsWithHashDedup>();
+        services.AddSingleton<IDbMigration, Migration008_AddItemSnMapTable>();
         services.AddSingleton<MigrationRunner>();
         services.AddSingleton<DatabaseBootstrapper>();
 
@@ -48,11 +49,13 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IItemWriteRepository, ItemWriteRepository>();
         services.AddSingleton<ISetItemWriteRepository, SetItemWriteRepository>();
         services.AddSingleton<ISkillWriteRepository, SkillWriteRepository>();
+        services.AddSingleton<IItemSnRepository, ItemSnRepository>();
 
         services.AddSingleton<ISearchIndex, InMemorySearchIndex>();
         services.AddTransient<IWzExtractor, WzExtractionService>();
 
         services.AddTransient<IExtractAndImportUseCase, ExtractAndImportUseCase>();
+        services.AddTransient<IUpdateSnDataUseCase, UpdateSnDataUseCase>();
         services.AddTransient<IInitializeCatalogUseCase, InitializeCatalogUseCase>();
         services.AddTransient<ISearchItemsUseCase, SearchItemsUseCase>();
         services.AddTransient<ISearchSkillsUseCase, SearchSkillsUseCase>();

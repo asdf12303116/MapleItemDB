@@ -1,4 +1,4 @@
-﻿using MapleItemDB.Application.Contracts;
+using MapleItemDB.Application.Contracts;
 using MapleItemDB.Core.Interfaces;
 using Microsoft.Extensions.Logging;
 
@@ -12,6 +12,7 @@ public sealed class ExtractAndImportUseCase : IExtractAndImportUseCase
     private readonly ISkillWriteRepository _skillWriteRepository;
     private readonly IItemReadRepository _itemReadRepository;
     private readonly ISetItemReadRepository _setItemReadRepository;
+    private readonly IItemSnRepository _itemSnRepository;
     private readonly ILogger<ExtractAndImportUseCase> _logger;
 
     public ExtractAndImportUseCase(
@@ -21,6 +22,7 @@ public sealed class ExtractAndImportUseCase : IExtractAndImportUseCase
         ISkillWriteRepository skillWriteRepository,
         IItemReadRepository itemReadRepository,
         ISetItemReadRepository setItemReadRepository,
+        IItemSnRepository itemSnRepository,
         ILogger<ExtractAndImportUseCase> logger)
     {
         _extractor = extractor;
@@ -29,6 +31,7 @@ public sealed class ExtractAndImportUseCase : IExtractAndImportUseCase
         _skillWriteRepository = skillWriteRepository;
         _itemReadRepository = itemReadRepository;
         _setItemReadRepository = setItemReadRepository;
+        _itemSnRepository = itemSnRepository;
         _logger = logger;
     }
 
@@ -41,6 +44,12 @@ public sealed class ExtractAndImportUseCase : IExtractAndImportUseCase
             request.GameDirectory,
             request.ExtractionProgress,
             request.CancellationToken);
+
+        var snLookup = await _itemSnRepository.GetLookupAsync(request.CancellationToken);
+        foreach (var item in extraction.Items)
+        {
+            item.Sn = snLookup.TryGetValue(item.ItemId, out var sn) ? sn : null;
+        }
 
         request.CancellationToken.ThrowIfCancellationRequested();
         await _itemWriteRepository.BulkUpsertAsync(extraction.Items, request.ItemWriteProgress, request.CancellationToken);
@@ -61,4 +70,3 @@ public sealed class ExtractAndImportUseCase : IExtractAndImportUseCase
         };
     }
 }
-

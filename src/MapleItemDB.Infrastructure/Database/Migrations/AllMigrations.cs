@@ -1,4 +1,4 @@
-﻿using MapleItemDB.Infrastructure.Repositories.Shared;
+using MapleItemDB.Infrastructure.Repositories.Shared;
 using Microsoft.Data.Sqlite;
 
 namespace MapleItemDB.Infrastructure.Database.Migrations;
@@ -504,5 +504,28 @@ public class Migration007_SplitBlobAssetsWithHashDedup : IDbMigration
         }
 
         return false;
+    }
+}
+
+/// <summary>
+/// 迁移 008: 新增 dim_item_sn_map 独立 SN 映射表
+/// </summary>
+public class Migration008_AddItemSnMapTable : IDbMigration
+{
+    public int Version => 8;
+    public string Description => "新增 dim_item_sn_map 独立 SN 映射表";
+
+    public async Task ExecuteAsync(SqliteConnection conn)
+    {
+        using var cmd = conn.CreateCommand();
+        cmd.CommandText = """
+            CREATE TABLE IF NOT EXISTS dim_item_sn_map (
+                item_id       INTEGER PRIMARY KEY,
+                sn            INTEGER NOT NULL
+            );
+
+            CREATE INDEX IF NOT EXISTS idx_item_sn_map_sn ON dim_item_sn_map(sn);
+            """;
+        await cmd.ExecuteNonQueryAsync();
     }
 }

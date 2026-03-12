@@ -1,4 +1,4 @@
-﻿using MapleItemDB.Infrastructure.Database.Migrations;
+using MapleItemDB.Infrastructure.Database.Migrations;
 using Microsoft.Extensions.Logging;
 
 namespace MapleItemDB.Infrastructure.Database;
@@ -101,6 +101,12 @@ public class DatabaseBootstrapper
         CREATE INDEX IF NOT EXISTS idx_items_name ON dim_items(name);
         CREATE INDEX IF NOT EXISTS idx_items_category ON dim_items(category, sub_category);
         CREATE INDEX IF NOT EXISTS idx_items_cash ON dim_items(is_cash) WHERE is_cash = 1;
+
+        CREATE TABLE IF NOT EXISTS dim_item_sn_map (
+            item_id       INTEGER PRIMARY KEY,
+            sn            INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_item_sn_map_sn ON dim_item_sn_map(sn);
 
         CREATE TABLE IF NOT EXISTS dim_setitems (
             setitem_id    INTEGER PRIMARY KEY,

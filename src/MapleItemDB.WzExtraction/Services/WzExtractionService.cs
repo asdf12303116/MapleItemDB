@@ -1,5 +1,3 @@
-using System.Text.Json;
-using MapleItemDB.Core.Data;
 using MapleItemDB.Core.Interfaces;
 using MapleItemDB.Core.Models;
 using Microsoft.Extensions.Logging;
@@ -139,19 +137,6 @@ public class WzExtractionService : IWzExtractor, IDisposable
         // 8. 导出图标 (内存 BLOB)
         progress?.Report(new ExtractionProgress("导出图标", 0, allItems.Count, "正在导出道具图标..."));
         ExportIcons(wzRoot, allItems, new IconExporter(), progress, ct);
-
-        // 9. 填充 SN 编号
-        var snCount = 0;
-        foreach (var item in allItems)
-        {
-            var sn = SnMap.GetSn(item.ItemId);
-            if (sn.HasValue)
-            {
-                item.Sn = sn.Value;
-                snCount++;
-            }
-        }
-        _logger.LogInformation("SN 填充完成: {Count} 个道具", snCount);
 
         progress?.Report(new ExtractionProgress("完成", allItems.Count, allItems.Count, $"共提取 {allItems.Count} 个道具, {skills.Count} 个技能"));
         _logger.LogInformation("全部提取完成: {Count} 个道具, {SkillCount} 个技能", allItems.Count, skills.Count);
