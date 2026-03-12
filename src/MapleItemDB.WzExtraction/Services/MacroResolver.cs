@@ -9,23 +9,23 @@ namespace MapleItemDB.WzExtraction.Services;
 /// </summary>
 public partial class MacroResolver : IStringResolver
 {
-    private readonly Dictionary<int, StringPoolBuilder.StringEntry> _stringPool;
+    private readonly Dictionary<int, StringPoolBuilder.StringEntry> _itemStringPool;
 
-    public MacroResolver(IReadOnlyDictionary<int, StringPoolBuilder.StringEntry> stringPool)
+    public MacroResolver(IReadOnlyDictionary<int, StringPoolBuilder.StringEntry> itemStringPool)
     {
-        _stringPool = new Dictionary<int, StringPoolBuilder.StringEntry>(stringPool);
+        _itemStringPool = new Dictionary<int, StringPoolBuilder.StringEntry>(itemStringPool);
     }
 
     public string? GetName(int itemId)
     {
-        if (_stringPool.TryGetValue(itemId, out var entry))
+        if (_itemStringPool.TryGetValue(itemId, out var entry))
             return entry.Name != null ? ResolveMacros(entry.Name) : null;
         return null;
     }
 
     public string? GetDescription(int itemId)
     {
-        if (_stringPool.TryGetValue(itemId, out var entry))
+        if (_itemStringPool.TryGetValue(itemId, out var entry))
             return entry.Description != null ? ResolveMacros(entry.Description) : null;
         return null;
     }

@@ -3,26 +3,33 @@ using WzComparerR2.WzLib;
 namespace MapleItemDB.WzExtraction.Services;
 
 /// <summary>
-/// 从 String.wz 构建道具字符串池 (id → name/desc)
+/// 从 String.wz 构建字符串池（分离道具与技能，避免同 ID 冲突）
 /// </summary>
 public class StringPoolBuilder
 {
     /// <summary>字符串条目 (名称 + 描述 + 技能等级效果模板)</summary>
     public record StringEntry(string? Name, string? Description, string? SkillH = null);
 
-    private readonly Dictionary<int, StringEntry> _pool = new();
+    private readonly Dictionary<int, StringEntry> _itemPool = new();
+    private readonly Dictionary<int, StringEntry> _skillPool = new();
 
     /// <summary>
-    /// 获取已构建的字符串池
+    /// 获取道具字符串池
     /// </summary>
-    public IReadOnlyDictionary<int, StringEntry> Pool => _pool;
+    public IReadOnlyDictionary<int, StringEntry> ItemPool => _itemPool;
+
+    /// <summary>
+    /// 获取技能字符串池
+    /// </summary>
+    public IReadOnlyDictionary<int, StringEntry> SkillPool => _skillPool;
 
     /// <summary>
     /// 从 String 节点构建字符串池
     /// </summary>
     public void Build(Wz_Node stringWzNode)
     {
-        _pool.Clear();
+        _itemPool.Clear();
+        _skillPool.Clear();
 
         // String 下包含: Eqp.img, Consume.img, Etc.img, Ins.img (Setup), Cash.img, Pet.img 等
         BuildFromEqp(stringWzNode);
@@ -54,7 +61,7 @@ public class StringPoolBuilder
             {
                 if (int.TryParse(idNode.Text, out var itemId))
                 {
-                    AddEntry(itemId, idNode);
+                    AddItemEntry(itemId, idNode);
                 }
             }
         }
@@ -72,7 +79,7 @@ public class StringPoolBuilder
         {
             if (int.TryParse(idNode.Text, out var itemId))
             {
-                AddEntry(itemId, idNode);
+                AddItemEntry(itemId, idNode);
             }
         }
     }
@@ -91,7 +98,7 @@ public class StringPoolBuilder
             {
                 if (int.TryParse(idNode.Text, out var itemId))
                 {
-                    AddEntry(itemId, idNode);
+                    AddItemEntry(itemId, idNode);
                 }
             }
         }
@@ -99,7 +106,6 @@ public class StringPoolBuilder
 
     /// <summary>
     /// 技能字符串解析 (Skill.img → skillId → name/bookName/desc)
-    /// 技能 ID 与道具 ID 不重叠，可以放在同一个池中
     /// </summary>
     private void BuildFromSkill(Wz_Node stringNode)
     {
@@ -147,12 +153,12 @@ public class StringPoolBuilder
                 }
 
                 if (name != null)
-                    _pool[skillId] = new StringEntry(name, desc, skillH);
+                    _skillPool[skillId] = new StringEntry(name, desc, skillH);
             }
         }
     }
 
-    private void AddEntry(int itemId, Wz_Node idNode)
+    private void AddItemEntry(int itemId, Wz_Node idNode)
     {
         string? name = null;
         string? desc = null;
@@ -165,7 +171,7 @@ public class StringPoolBuilder
         if (descNode != null)
             desc = descNode.Value?.ToString();
 
-        _pool[itemId] = new StringEntry(name, desc);
+        _itemPool[itemId] = new StringEntry(name, desc);
     }
 
     /// <summary>
