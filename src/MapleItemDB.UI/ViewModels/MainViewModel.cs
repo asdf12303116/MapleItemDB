@@ -373,38 +373,45 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private void CopySelectedItemName()
+    private async Task CopySelectedItemName()
     {
         if (SelectedItem != null)
-            SafeSetClipboard(SelectedItem.Name);
+            await SafeSetClipboard(SelectedItem.Name);
     }
 
     [RelayCommand]
-    private void CopySelectedItemId()
+    private async Task CopySelectedItemId()
     {
         if (SelectedItem != null)
-            SafeSetClipboard(SelectedItem.ItemId.ToString());
+            await SafeSetClipboard(SelectedItem.ItemId.ToString());
     }
 
     [RelayCommand]
-    private void CopySelectedItemSn()
+    private async Task CopySelectedItemSn()
     {
         if (SelectedItem?.Sn != null)
-            SafeSetClipboard(SelectedItem.Sn.Value.ToString());
+            await SafeSetClipboard(SelectedItem.Sn.Value.ToString());
     }
 
-    private static void SafeSetClipboard(string text)
+    private static async Task SafeSetClipboard(string text)
     {
         for (int i = 0; i < 3; i++)
         {
             try
             {
-                System.Windows.Clipboard.SetText(text);
+                await Task.Run(() =>
+                {
+                    var staThread = new Thread(() => System.Windows.Clipboard.SetText(text));
+                    staThread.SetApartmentState(ApartmentState.STA);
+                    staThread.Start();
+                    staThread.Join();
+                });
                 return;
             }
             catch
             {
-                Thread.Sleep(100);
+                if (i < 2)
+                    await Task.Delay(100);
             }
         }
     }
