@@ -1,6 +1,10 @@
 using System.ComponentModel;
+using System.Linq;
+using System.Text;
 using System.Windows;
 using System.Windows.Controls;
+using System.Windows.Documents;
+using System.Windows.Input;
 using System.Windows.Media;
 using MapleItemDB.Core.Models;
 using MapleItemDB.UI.ViewModels;
@@ -15,6 +19,9 @@ public partial class MainWindow : Window
         InitializeComponent();
         DataContext = viewModel;
         viewModel.PropertyChanged += OnViewModelPropertyChanged;
+
+        SearchResultsGrid.CommandBindings.Add(
+            new CommandBinding(ApplicationCommands.Copy, OnCopyDataGrid));
     }
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
@@ -48,6 +55,41 @@ public partial class MainWindow : Window
                 return descendant;
         }
         return null;
+    }
+
+    private void OnCopyDataGrid(object sender, ExecutedRoutedEventArgs e)
+    {
+        if (SearchResultsGrid.SelectedCells.Count == 0)
+            return;
+
+        var sb = new StringBuilder();
+        var rowGroups = SearchResultsGrid.SelectedCells.GroupBy(c => c.Item);
+
+        foreach (var row in rowGroups)
+        {
+            var rowText = string.Join("\t", row.Select(cell =>
+            {
+                if (cell.Column.GetCellContent(cell.Item) is TextBlock tb)
+                    return tb.Text;
+                return string.Empty;
+            }));
+            sb.AppendLine(rowText);
+        }
+
+        var text = sb.ToString().TrimEnd('\r', '\n');
+        if (text.Length > 0)
+        {
+            try
+            {
+                System.Windows.Forms.Clipboard.SetDataObject(text, true, 3, 100);
+            }
+            catch
+            {
+                // WinForms Clipboard 内部已重试，忽略
+            }
+        }
+
+        e.Handled = true;
     }
 
     private async void OnExtractClick(object sender, RoutedEventArgs e)
