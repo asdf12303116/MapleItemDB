@@ -53,8 +53,8 @@ public class SkillReadRepository : ISkillReadRepository
         else
         {
             var sql = limit > 0
-                ? $"{SelectProjection} WHERE (s.name LIKE @Keyword OR s.description LIKE @Keyword) LIMIT @Limit"
-                : $"{SelectProjection} WHERE (s.name LIKE @Keyword OR s.description LIKE @Keyword)";
+                ? $"{SelectProjection} WHERE (s.name LIKE @Keyword OR s.description LIKE @Keyword OR CAST(s.skill_id AS TEXT) LIKE @Keyword) LIMIT @Limit"
+                : $"{SelectProjection} WHERE (s.name LIKE @Keyword OR s.description LIKE @Keyword OR CAST(s.skill_id AS TEXT) LIKE @Keyword)";
             rows = await conn.QueryAsync<SkillRow>(sql, new { Keyword = $"%{keyword}%", Limit = limit });
         }
         return rows.Select(r => r.ToEntity()).ToList();
