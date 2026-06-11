@@ -399,7 +399,7 @@ public partial class MainViewModel : ObservableObject
         {
             try
             {
-                System.Windows.Clipboard.SetDataObject(text, true);
+                System.Windows.Clipboard.SetText(text);
                 return;
             }
             catch
