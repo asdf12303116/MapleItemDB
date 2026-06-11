@@ -31,3 +31,7 @@ demo/WzComparerR2-Plus/
 PLAN.md
 gemini-output.md
 i18n.txt
+
+##打包
+*.zip
+dist/   

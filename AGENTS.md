@@ -32,7 +32,7 @@
 - 若未先更新版本号，禁止提交。
 
 7) 修改后验证（CLI 优先）
-- 当修改涉及“需要验证功能行为”的场景时，优先使用 MapleItemDB.Cli（mapleidb）做最小闭环验证，而不是仅靠静态代码阅读。
+- 当修改涉及"需要验证功能行为"的场景时，优先使用 MapleItemDB.Cli（mapleidb）做最小闭环验证，而不是仅靠静态代码阅读。
 - 默认优先使用以下命令按需验证：
   - dotnet run --project src/MapleItemDB.Cli -- stats
   - dotnet run --project src/MapleItemDB.Cli -- search <keyword> [options]
@@ -43,8 +43,21 @@
 - 验证结果在回复中至少包含：执行命令、关键输出字段（JSON）、结论（通过/未通过）。
 - 若本地环境导致无法执行 CLI（如缺少 WZ/数据库路径），需明确阻塞原因，并给出可复现的命令。
 
+8) Git 提交成功后自动打包（强制）
+- 在执行 git commit 成功后，立即执行 ./package.ps1 打包脚本。
+- package.ps1 会自动：
+  - 发布项目（dotnet publish）
+  - 复制可执行文件、e_sqlite3.dll、数据库到 dist
+  - 压缩为 MSEA代码查询器-{MMdd}-v{x}.zip
+  - 删除 dist 目录
+  - 仅保留最新 3 个 zip 包
+- 打包结果在回复中列出 zip 文件名。
+- 若打包失败，需提示用户并提供错误信息。
+- 若本地缺少数据库文件（D:\GAME\MapleStory228\Data\mapleitemdb.db），需明确阻塞原因并跳过打包。
+
 执行策略（简版）：
 - 能用上下文解决 -> 直接做
 - 不能 -> 先读 doc/PROJECT_STRUCTURE_AND_DATAFLOW.md
 - 还不能 -> 再读最相关代码
 - 修改完需要验证功能 -> 优先用 CLI 做针对性测试
+- 提交成功后 -> 执行 package.ps1 打包
