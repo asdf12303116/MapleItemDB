@@ -395,23 +395,16 @@ public partial class MainViewModel : ObservableObject
 
     private static async Task SafeSetClipboard(string text)
     {
-        for (int i = 0; i < 3; i++)
+        for (int i = 0; i < 5; i++)
         {
             try
             {
-                await Task.Run(() =>
-                {
-                    var staThread = new Thread(() => System.Windows.Clipboard.SetText(text));
-                    staThread.SetApartmentState(ApartmentState.STA);
-                    staThread.Start();
-                    staThread.Join();
-                });
+                System.Windows.Clipboard.SetDataObject(text, false);
                 return;
             }
             catch
             {
-                if (i < 2)
-                    await Task.Delay(100);
+                await Task.Delay(200);
             }
         }
     }
