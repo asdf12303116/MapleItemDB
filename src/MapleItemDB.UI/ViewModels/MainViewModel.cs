@@ -373,39 +373,35 @@ public partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task CopySelectedItemName()
+    private void CopySelectedItemName()
     {
         if (SelectedItem != null)
-            await SafeSetClipboard(SelectedItem.Name);
+            SafeSetClipboard(SelectedItem.Name);
     }
 
     [RelayCommand]
-    private async Task CopySelectedItemId()
+    private void CopySelectedItemId()
     {
         if (SelectedItem != null)
-            await SafeSetClipboard(SelectedItem.ItemId.ToString());
+            SafeSetClipboard(SelectedItem.ItemId.ToString());
     }
 
     [RelayCommand]
-    private async Task CopySelectedItemSn()
+    private void CopySelectedItemSn()
     {
         if (SelectedItem?.Sn != null)
-            await SafeSetClipboard(SelectedItem.Sn.Value.ToString());
+            SafeSetClipboard(SelectedItem.Sn.Value.ToString());
     }
 
-    private static async Task SafeSetClipboard(string text)
+    private static void SafeSetClipboard(string text)
     {
-        for (int i = 0; i < 5; i++)
+        try
         {
-            try
-            {
-                System.Windows.Clipboard.SetDataObject(text, false);
-                return;
-            }
-            catch
-            {
-                await Task.Delay(200);
-            }
+            System.Windows.Forms.Clipboard.SetDataObject(text, true, 3, 100);
+        }
+        catch
+        {
+            // WinForms Clipboard 内部已重试 3 次，仍失败则忽略
         }
     }
 
